@@ -1,0 +1,15 @@
+{
+  "altitude_km": 888,
+  "inclination_deg": 42,
+  "planes": 16,
+  "sats_per_plane": 16,
+  "phasing": 1,
+  "j2": true,
+  "duration_min": 120,
+  "step_sec": 60,
+  "stations": [
+    {"name":"Seoul","lat_deg":37.5665,"lon_deg":126.9780,"min_elevation_deg":20},
+    {"name":"Dubai","lat_deg":25.2048,"lon_deg":55.2708,"min_elevation_deg":20},
+    {"name":"Singapore","lat_deg":1.3521,"lon_deg":103.8198,"min_elevation_deg":20}
+  ]
+}

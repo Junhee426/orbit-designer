@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: k-leo-orbit-designer
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: KLEO_SERVER_MODE
+        value: render
+      - key: KLEO_MAX_SATELLITES
+        value: "4096"
+      - key: KLEO_MAX_TLE_SATELLITES
+        value: "512"
+      - key: KLEO_MAX_STATIONS
+        value: "24"
+      - key: KLEO_MAX_COVERAGE_AREAS
+        value: "18"
+      - key: KLEO_MAX_HEATMAP_POINTS
+        value: "60"
+      - key: KLEO_MAX_SIM_SAMPLES
+        value: "3000"
+      - key: KLEO_MAX_TRADE_CASES
+        value: "64"
+      - key: KLEO_MAX_SNAPSHOT_WORK
+        value: "20000000"
+      - key: KLEO_MAX_SIM_WORK
+        value: "20000000"
+      - key: KLEO_MAX_TRADE_WORK
+        value: "30000000"
+      - key: KLEO_MAX_TLE_CHARS
+        value: "200000"
+      - key: KLEO_STATIC_CACHE_SECONDS
+        value: "86400"
+      - key: KLEO_EXPOSE_SERVER_INFO
+        value: "true"

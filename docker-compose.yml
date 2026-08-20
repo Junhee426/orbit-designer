@@ -1,0 +1,12 @@
+services:
+  kleo:
+    build: .
+    ports:
+      - "10000:10000"
+    environment:
+      PORT: "10000"
+      KLEO_SERVER_MODE: "docker-local"
+      KLEO_MAX_SATELLITES: "4096"
+      KLEO_MAX_TLE_SATELLITES: "512"
+      KLEO_MAX_HEATMAP_POINTS: "60"
+    restart: unless-stopped
