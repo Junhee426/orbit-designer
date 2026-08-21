@@ -1,8 +1,8 @@
-# K-LEO Orbit Designer V1.5 Server Edition
+# Test Orbit Designer V1.0.0
 
 저궤도 위성통신망의 위성군·서비스 가용도·Coverage·ISL·Access를 설계하고 CesiumJS에서 시각화하는 Python/FastAPI 웹 애플리케이션입니다.
 
-V1.5는 기존 V1.4.2 기능을 유지하면서 **Render Web Service에 GitHub 저장소를 연결해 브라우저 서비스로 바로 배포**할 수 있도록 서버 배포 구조를 추가했습니다.
+V1.0.0은 기존 V1.4.2 기능을 유지하면서 **Render Web Service에 GitHub 저장소를 연결해 브라우저 서비스로 바로 배포**할 수 있도록 서버 배포 구조를 추가했습니다.
 
 ## 주요 분석/시각화 기능
 
@@ -21,7 +21,7 @@ V1.5는 기존 V1.4.2 기능을 유지하면서 **Render Web Service에 GitHub �
 - time playback
 - service availability / handover / link budget / trade study
 
-## V1.5 Server Edition 추가 기능
+## V1.0.0 추가 기능
 
 - `Dockerfile`
 - Render Blueprint `render.yaml`
@@ -195,7 +195,7 @@ KLEO_MAX_TRADE_CASES            64
 
 추가 workload 상한도 `render.yaml`과 `.env.example`에서 조정할 수 있습니다.
 
-K-LEO 기본 888 km / 42° / 16×16 = 256기 시나리오는 기본 상한보다 충분히 작습니다.
+기본 1280 km / 42° / 8×16 = 128기 시나리오는 기본 상한보다 충분히 작습니다.
 
 상한 초과 요청은 HTTP `413`으로 거절됩니다.
 
@@ -270,7 +270,7 @@ uv run pytest -ra
 uv run kleo-validate
 ```
 
-V1.5 검증 결과:
+V1.0.0 검증 결과:
 
 ```text
 51 passed

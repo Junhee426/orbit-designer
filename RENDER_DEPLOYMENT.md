@@ -1,4 +1,4 @@
-# Render Deployment Guide — K-LEO Orbit Designer V1.5 Server Edition
+# Render Deployment Guide — Test Orbit Designer V1.0.0
 
 ## Recommended architecture
 
@@ -72,7 +72,7 @@ Important variables:
 - `KLEO_MAX_SIM_SAMPLES=3000`
 - `KLEO_MAX_TRADE_CASES=64`
 
-K-LEO 888 km / 42° / 16×16 = 256 satellites is comfortably below these limits.
+Default 1280 km / 42° / 8×16 = 128 satellites is comfortably below these limits.
 
 ## 6. Health and diagnostics
 

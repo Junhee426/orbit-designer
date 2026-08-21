@@ -71,3 +71,24 @@ def test_v142_point_markers_have_no_outline_and_model_selector_is_wired():
     assert "$('satModel').addEventListener('change',updateSatelliteStyles)" in HTML
     assert "e.model.uri=modelUri" in HTML
     assert "$('satModel').disabled=!model" in HTML
+
+
+def test_v15_global_initial_view_and_service_selection_do_not_auto_zoom():
+    assert 'const GLOBAL_VIEW={lon:100,lat:20,height:30000000}' in HTML
+    assert 'function flyGlobal(instant=false)' in HTML
+    assert 'state.viewer.camera.setView({destination})' in HTML
+    assert 'await applyEarthSource();applyEarthDisplay();flyGlobal(true)' in HTML
+    assert 'await runAnalysis();flyGlobal(true)' in HTML
+    assert "$('applyServiceBtn').addEventListener('click',()=>applyServiceSelection(false))" in HTML
+    assert 'updatePresetStates();applyServiceSelection(false)' in HTML
+    assert "$('globalView').addEventListener('click',()=>flyGlobal(false))" in HTML
+    assert "$('serviceView').addEventListener('click',flyServiceArea)" in HTML
+
+
+def test_v100_brand_and_walker_defaults_are_consistent():
+    assert '<title>Test Orbit Designer V1.0.0</title>' in HTML
+    assert '<div class="brand">Test Orbit Designer</div>' in HTML
+    assert '<div class="version">V1.0.0 · Render-ready stateless web app</div>' in HTML
+    assert 'id="alt" type="number" value="1280"' in HTML
+    assert 'id="planes" type="number" value="8"' in HTML
+    assert 'id="spp" type="number" value="16"' in HTML

@@ -12,16 +12,17 @@ def test_health_endpoint_reports_v14():
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["version"] == "1.5.0"
+    assert payload["version"] == "1.0.0"
     assert isinstance(payload["sgp4_available"], bool)
 
 
-def test_kleo_preset_is_256_satellites():
+def test_kleo_preset_uses_test_orbit_defaults():
     response = client.get("/api/preset/k-leo")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["planes"] * payload["sats_per_plane"] == 256
-    assert payload["altitude_km"] == 888.0
+    assert payload["planes"] * payload["sats_per_plane"] == 128
+    assert payload["altitude_km"] == 1280.0
+    assert payload["planes"] == 8
     assert payload["inclination_deg"] == 42.0
 
 

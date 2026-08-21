@@ -20,9 +20,10 @@ from .core.tle import SGP4UnavailableError, TLEParseError, parse_tle_text, sgp4_
 from .server_config import SETTINGS
 
 BASE = Path(__file__).resolve().parent
-APP_VERSION = "1.5.0"
+APP_NAME = "Test Orbit Designer"
+APP_VERSION = "1.0.0"
 app = FastAPI(
-    title="K-LEO Orbit Designer",
+    title=APP_NAME,
     version=APP_VERSION,
     description="Render-ready LEO satellite communications constellation design service.",
 )
@@ -72,9 +73,9 @@ class ServiceSelectionIn(BaseModel):
 
 
 class SimIn(BaseModel):
-    altitude_km: float = 888.0
+    altitude_km: float = 1280.0
     inclination_deg: float = 42.0
-    planes: int = Field(16, ge=1, le=128)
+    planes: int = Field(8, ge=1, le=128)
     sats_per_plane: int = Field(16, ge=1, le=256)
     phasing: int = 1
     j2: bool = True
@@ -115,9 +116,9 @@ class SnapshotIn(BaseModel):
     ]
 
     # Walker fields
-    altitude_km: float = 888.0
+    altitude_km: float = 1280.0
     inclination_deg: float = 42.0
-    planes: int = Field(16, ge=1, le=128)
+    planes: int = Field(8, ge=1, le=128)
     sats_per_plane: int = Field(16, ge=1, le=256)
     phasing: int = 1
     j2: bool = True
@@ -132,9 +133,9 @@ class TLEParseIn(BaseModel):
 
 
 class TradeIn(BaseModel):
-    altitudes_km: List[float] = [700, 888, 1100]
+    altitudes_km: List[float] = [1000, 1280, 1500]
     inclinations_deg: List[float] = [42, 53]
-    planes_list: List[int] = [12, 16]
+    planes_list: List[int] = [4, 8]
     sats_per_plane_list: List[int] = [12, 16]
     phasing: int = 1
     duration_min: float = 120.0
@@ -251,7 +252,7 @@ def _tle_error(exc: Exception):
 def health():
     return {
         "status": "ok",
-        "name": "K-LEO Orbit Designer",
+        "name": APP_NAME,
         "version": APP_VERSION,
         "mode": SETTINGS.mode,
         "render": os.getenv("RENDER", "false").lower() == "true",
@@ -329,9 +330,9 @@ def resolve_service_regions(req: ServiceSelectionIn):
 @app.get("/api/preset/k-leo")
 def preset():
     return {
-        "altitude_km": 888.0,
+        "altitude_km": 1280.0,
         "inclination_deg": 42.0,
-        "planes": 16,
+        "planes": 8,
         "sats_per_plane": 16,
         "phasing": 1,
         "j2": True,

@@ -10,7 +10,7 @@ def test_health_server_version_and_headers():
     r = client.get("/health")
     assert r.status_code == 200
     body = r.json()
-    assert body["version"] == "1.5.0"
+    assert body["version"] == "1.0.0"
     assert body["status"] == "ok"
     assert r.headers["x-content-type-options"] == "nosniff"
     assert "x-request-id" in r.headers
@@ -21,7 +21,7 @@ def test_server_info_exposes_limits():
     r = client.get("/api/server-info")
     assert r.status_code == 200
     body = r.json()
-    assert body["version"] == "1.5.0"
+    assert body["version"] == "1.0.0"
     assert body["limits"]["max_satellites"] >= 256
     assert body["limits"]["max_heatmap_points"] >= 28
 

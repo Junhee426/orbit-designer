@@ -6,7 +6,7 @@ import webbrowser
 
 import uvicorn
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.0.0"
 
 
 def _open_browser(url: str) -> None:
@@ -16,13 +16,13 @@ def _open_browser(url: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kleo",
-        description="Run K-LEO Orbit Designer development server.",
+        description="Run Test Orbit Designer development server.",
     )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
     parser.add_argument("--reload", action="store_true", help="Enable development auto-reload")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser automatically")
-    parser.add_argument("--version", action="version", version=f"K-LEO Orbit Designer {APP_VERSION}")
+    parser.add_argument("--version", action="version", version=f"Test Orbit Designer {APP_VERSION}")
     return parser
 
 

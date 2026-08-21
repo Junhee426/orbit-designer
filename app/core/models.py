@@ -3,9 +3,9 @@ from typing import List, Dict, Any
 
 @dataclass
 class ConstellationConfig:
-    altitude_km: float = 888.0
+    altitude_km: float = 1280.0
     inclination_deg: float = 42.0
-    planes: int = 16
+    planes: int = 8
     sats_per_plane: int = 16
     phasing: int = 1
     j2: bool = True

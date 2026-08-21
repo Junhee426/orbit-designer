@@ -26,7 +26,7 @@ VANGUARD_EPOCH_POSITION_KM = np.array([7022.46529266, -1400.08296755, 0.03995155
 
 
 def main() -> None:
-    cfg = ConstellationConfig(888, 42, 16, 16, 1, True)
+    cfg = ConstellationConfig(1280, 42, 8, 16, 1, True)
     stations = [
         GroundStation("Seoul", 37.5665, 126.9780, 20),
         GroundStation("Dubai", 25.2048, 55.2708, 20),
@@ -56,12 +56,12 @@ def main() -> None:
         sgp4_check["pass_1m"] = bool(err_m < 1.0)
 
     validation = {
-        "version": "1.4.2",
-        "scenario": "K-LEO 888 km / 42 deg / Walker 16x16 / F=1",
-        "orbital_period_min": orbital_period_s(888) / 60,
-        "j2_raan_drift_deg_per_day": float(np.degrees(j2_raan_rate_rad_s(888, 42)) * 86400),
+        "version": "1.0.0",
+        "scenario": "Test Orbit Designer default 1280 km / 42 deg / Walker 8x16 / F=1",
+        "orbital_period_min": orbital_period_s(1280) / 60,
+        "j2_raan_drift_deg_per_day": float(np.degrees(j2_raan_rate_rad_s(1280, 42)) * 86400),
         "satellite_count": cfg.total_satellites,
-        "radius_error_max_m": float(np.max(np.abs(rad - (R_EARTH_KM + 888))) * 1000),
+        "radius_error_max_m": float(np.max(np.abs(rad - (R_EARTH_KM + 1280))) * 1000),
         "coverage_summary": res["coverage_summary"],
         "stations": [
             {k: v for k, v in t.items() if k in ["name", "availability", "avg_visible", "max_visible"]}
@@ -99,7 +99,7 @@ def main() -> None:
         "offline_earth_asset": (ROOT / "app" / "static" / "earth_blue_marble_2048.jpg").exists(),
         "satellite_glb_asset": (ROOT / "app" / "static" / "kleo_satellite.glb").exists(),
     }
-    out = ROOT / "outputs" / "validation_report_v1_4.json"
+    out = ROOT / "outputs" / "validation_report_v1_0_0.json"
     out.write_text(json.dumps(validation, indent=2), encoding="utf-8")
     print(json.dumps(validation, indent=2))
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.0 — Test Orbit Designer
+
+- Unified product display name to **Test Orbit Designer V1.0.0** across HTML, FastAPI, CLI, and package metadata.
+- Changed default Walker altitude from 888 km to **1280 km**.
+- Changed default Walker plane count from 16 to **8**.
+- Kept the default 16 satellites per plane, giving **128 satellites** at startup.
+- Retained the global initial camera view and no-auto-zoom service-area behavior.
+
+## Legacy development history
+
 ## 1.5.0 — Render Server Edition
 
 - Added `Dockerfile` for Render-compatible container deployment.
