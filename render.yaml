@@ -7,7 +7,6 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeployTrigger: commit
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: KLEO_SERVER_MODE
         value: render

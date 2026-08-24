@@ -15,6 +15,8 @@ from app.core.simulation import run_simulation
 from app.core.snapshot import walker_snapshot
 from app.core.tle import parse_tle_text, propagate_tles, sgp4_available
 from app.core.service_regions import resolve_selection
+from app.core.geometry import walker_orbital_geometry
+from app.core.multishell import multi_shell_snapshot, run_multi_shell_simulation
 
 
 VANGUARD_TLE = (
@@ -41,6 +43,13 @@ def main() -> None:
         cfg, 0, min_elevation_deg=20, heatmap_points=28, stations=service_stations,
         coverage_areas=service["coverage_areas"],
     )
+    geometry = walker_orbital_geometry(cfg, "P01-S01", 0, min_elevation_deg=20, ground_track_samples=181)
+    shells = [
+        ("SH1", "Core 1280 km", cfg),
+        ("SH2", "High-inclination supplement", ConstellationConfig(600, 70, 6, 12, 1, True)),
+    ]
+    multi_snap = multi_shell_snapshot(shells, 0, min_elevation_deg=20, heatmap=False, stations=service_stations)
+    multi_sim = run_multi_shell_simulation(shells, service_stations, 30, 120)
 
     tle_records = parse_tle_text(VANGUARD_TLE)
     sgp4_check = {
@@ -56,7 +65,7 @@ def main() -> None:
         sgp4_check["pass_1m"] = bool(err_m < 1.0)
 
     validation = {
-        "version": "1.0.0",
+        "version": "1.1.0",
         "scenario": "Test Orbit Designer default 1280 km / 42 deg / Walker 8x16 / F=1",
         "orbital_period_min": orbital_period_s(1280) / 60,
         "j2_raan_drift_deg_per_day": float(np.degrees(j2_raan_rate_rad_s(1280, 42)) * 86400),
@@ -90,6 +99,20 @@ def main() -> None:
             "epoch_utc": tle_records[0].epoch_utc.isoformat().replace("+00:00", "Z"),
         },
         "sgp4_reference": sgp4_check,
+        "v1_1_orbital_geometry": {
+            "selected_satellite": geometry["satellite_id"],
+            "footprint_radius_km_min_el_20": geometry["footprint"]["surface_radius_km"],
+            "footprint_central_angle_deg": geometry["footprint"]["central_angle_deg"],
+            "ground_track_segments": len(geometry["ground_track"]["segments_lon_lat_deg"]),
+            "ground_track_samples": geometry["ground_track"]["samples"],
+        },
+        "v1_1_multi_shell": {
+            "shell_count": len(shells),
+            "satellite_count": len(multi_snap["satellites"]),
+            "orbit_paths": len(multi_snap["visualization"]["orbits"]),
+            "combined_mean_visible_30min": multi_sim["coverage_summary"]["mean_visible"],
+            "isl_scope": "intra-shell only",
+        },
     }
     validation["cesium_visualization"] = {
         "orbit_paths": len(snap["visualization"]["orbits"]),
@@ -99,7 +122,7 @@ def main() -> None:
         "offline_earth_asset": (ROOT / "app" / "static" / "earth_blue_marble_2048.jpg").exists(),
         "satellite_glb_asset": (ROOT / "app" / "static" / "kleo_satellite.glb").exists(),
     }
-    out = ROOT / "outputs" / "validation_report_v1_0_0.json"
+    out = ROOT / "outputs" / "validation_report_v1_1_0.json"
     out.write_text(json.dumps(validation, indent=2), encoding="utf-8")
     print(json.dumps(validation, indent=2))
 
