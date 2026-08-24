@@ -6,7 +6,7 @@ import webbrowser
 
 import uvicorn
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 
 def _open_browser(url: str) -> None:

@@ -57,13 +57,14 @@ def test_v141_satellite_point_markers_use_earth_occlusion():
     assert 'v.scene.preRender.addEventListener(updatePointOcclusion)' in HTML
     assert 'e._kleoPosition=pos' in HTML
     # The satellite point/label block must no longer force through-Earth rendering.
-    satellite_block = HTML[HTML.index("point:{pixelSize:9,color:Cesium.Color.CYAN"):HTML.index("e._kleoSatelliteId=s.id")]
+    satellite_block = HTML[HTML.index("point:{pixelSize:9,color:pointBase"):HTML.index("e._kleoSatelliteId=s.id")]
     assert 'Number.POSITIVE_INFINITY' not in satellite_block
 
 
 def test_v142_point_markers_have_no_outline_and_model_selector_is_wired():
-    assert 'outlineColor:' not in HTML
-    assert 'outlineWidth:' not in HTML
+    satellite_block = HTML[HTML.index("point:{pixelSize:9,color:pointBase"):HTML.index("e._kleoSatelliteId=s.id")]
+    assert 'outlineColor:' not in satellite_block
+    assert 'outlineWidth:' not in satellite_block
     assert 'const SAT_MODELS=' in HTML
     assert "kleo_satellite_compact.glb" in HTML
     assert "kleo_satellite_broadband.glb" in HTML
@@ -85,10 +86,21 @@ def test_v15_global_initial_view_and_service_selection_do_not_auto_zoom():
     assert "$('serviceView').addEventListener('click',flyServiceArea)" in HTML
 
 
-def test_v100_brand_and_walker_defaults_are_consistent():
-    assert '<title>Test Orbit Designer V1.0.0</title>' in HTML
+def test_v110_brand_and_walker_defaults_are_consistent():
+    assert '<title>Test Orbit Designer V1.1.0</title>' in HTML
     assert '<div class="brand">Test Orbit Designer</div>' in HTML
-    assert '<div class="version">V1.0.0 · Render-ready stateless web app</div>' in HTML
+    assert '<div class="version">V1.1.0 · Orbital Analysis · Render-ready</div>' in HTML
     assert 'id="alt" type="number" value="1280"' in HTML
     assert 'id="planes" type="number" value="8"' in HTML
     assert 'id="spp" type="number" value="16"' in HTML
+
+
+def test_v110_orbital_analysis_controls_and_multishell_ui_are_present():
+    for token in [
+        'value="multi_shell"', 'id="multiShellFields"', 'id="shellList"', 'id="addShellBtn"',
+        'id="groundTrackOn"', 'id="footprintOn"', 'id="trackSpan"',
+        '/api/multi-shell/simulate', '/api/orbital-geometry', 'function fetchSelectedGeometry',
+    ]:
+        assert token in HTML
+    assert "$('tradeBtn').disabled=m!=='walker'" in HTML
+

@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .core.models import ConstellationConfig, GroundStation, LinkBudgetConfig, SimulationConfig
+from .core.geometry import walker_orbital_geometry
+from .core.multishell import multi_shell_snapshot, run_multi_shell_simulation, multi_shell_orbital_geometry, normalize_shell_id
 from .core.optimizer import trade_study
 from .core.simulation import run_simulation
 from .core.snapshot import tle_snapshot, tle_station_timelines, walker_snapshot
@@ -21,7 +23,7 @@ from .server_config import SETTINGS
 
 BASE = Path(__file__).resolve().parent
 APP_NAME = "Test Orbit Designer"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
@@ -88,6 +90,33 @@ class SimIn(BaseModel):
     ]
 
 
+
+
+class ShellIn(BaseModel):
+    id: str = "SH1"
+    name: str = "Shell 1"
+    altitude_km: float = Field(1280.0, ge=160.0, le=3000.0)
+    inclination_deg: float = Field(42.0, ge=0.0, le=180.0)
+    planes: int = Field(8, ge=1, le=128)
+    sats_per_plane: int = Field(16, ge=1, le=256)
+    phasing: int = 1
+    j2: bool = True
+
+
+class MultiShellSimIn(BaseModel):
+    shells: List[ShellIn] = [
+        ShellIn(id="SH1", name="Core 1280 km", altitude_km=1280, inclination_deg=42, planes=8, sats_per_plane=16, phasing=1),
+        ShellIn(id="SH2", name="High-inclination supplement", altitude_km=600, inclination_deg=70, planes=6, sats_per_plane=12, phasing=1),
+    ]
+    duration_min: float = Field(120.0, gt=0, le=1440)
+    step_sec: float = Field(60.0, gt=0, le=3600)
+    stations: List[StationIn] = [
+        StationIn(name="Seoul", lat_deg=37.5665, lon_deg=126.9780, min_elevation_deg=20),
+        StationIn(name="Dubai", lat_deg=25.2048, lon_deg=55.2708, min_elevation_deg=20),
+        StationIn(name="Singapore", lat_deg=1.3521, lon_deg=103.8198, min_elevation_deg=20),
+    ]
+
+
 class TLESimIn(BaseModel):
     tle_text: str = Field(min_length=1, max_length=SETTINGS.max_tle_chars)
     start_utc: Optional[str] = None
@@ -99,7 +128,7 @@ class TLESimIn(BaseModel):
 
 
 class SnapshotIn(BaseModel):
-    mode: Literal["walker", "tle"] = "walker"
+    mode: Literal["walker", "multi_shell", "tle"] = "walker"
     time_sec: float = Field(0.0, ge=0.0, le=604800.0)
     min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
     heatmap: bool = True
@@ -123,9 +152,29 @@ class SnapshotIn(BaseModel):
     phasing: int = 1
     j2: bool = True
 
+    # Multi-shell Walker fields
+    shells: List[ShellIn] = []
+
     # TLE fields
     tle_text: Optional[str] = Field(None, max_length=SETTINGS.max_tle_chars)
     start_utc: Optional[str] = None
+
+
+class OrbitalGeometryIn(BaseModel):
+    mode: Literal["walker", "multi_shell"] = "walker"
+    satellite_id: str = Field(min_length=1, max_length=80)
+    time_sec: float = Field(0.0, ge=0.0, le=604800.0)
+    min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
+    ground_track_span_min: float = Field(220.0, ge=10.0, le=1440.0)
+    ground_track_samples: int = Field(181, ge=24, le=720)
+    footprint_samples: int = Field(72, ge=24, le=360)
+    altitude_km: float = 1280.0
+    inclination_deg: float = 42.0
+    planes: int = Field(8, ge=1, le=128)
+    sats_per_plane: int = Field(16, ge=1, le=256)
+    phasing: int = 1
+    j2: bool = True
+    shells: List[ShellIn] = []
 
 
 class TLEParseIn(BaseModel):
@@ -146,6 +195,44 @@ class TradeIn(BaseModel):
         StationIn(name="Dubai", lat_deg=25.2048, lon_deg=55.2708, min_elevation_deg=20),
         StationIn(name="Singapore", lat_deg=1.3521, lon_deg=103.8198, min_elevation_deg=20),
     ]
+
+
+def shell_cfgs(items: List[ShellIn]):
+    if not items:
+        raise HTTPException(400, "Multi-shell mode requires at least one shell.")
+    result = []
+    total = 0
+    seen_ids = set()
+    for i, x in enumerate(items):
+        shell_id = normalize_shell_id(x.id, i)
+        if shell_id in seen_ids:
+            raise HTTPException(400, f"Duplicate shell id: {shell_id}.")
+        seen_ids.add(shell_id)
+        cfg = ConstellationConfig(x.altitude_km, x.inclination_deg, x.planes, x.sats_per_plane, x.phasing, x.j2)
+        total += cfg.total_satellites
+        result.append((shell_id, x.name or f"Shell {i+1}", cfg))
+    if total > SETTINGS.max_satellites:
+        raise HTTPException(413, f"Multi-shell constellation has {total} satellites; server limit is {SETTINGS.max_satellites}.")
+    return result
+
+
+def _enforce_multi_shell_limits(req, *, snapshot: bool = False) -> int:
+    shells = shell_cfgs(req.shells)
+    count = sum(x[2].total_satellites for x in shells)
+    stations = list(getattr(req, "stations", []) or [])
+    _enforce_station_count(stations)
+    if snapshot:
+        areas = list(getattr(req, "coverage_areas", []) or [])
+        if len(areas) > SETTINGS.max_coverage_areas:
+            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
+        hp = int(getattr(req, "heatmap_points", 0) or 0)
+        if hp > SETTINGS.max_heatmap_points:
+            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
+        if bool(getattr(req, "heatmap", False)):
+            work = count * hp * hp * max(1, len(areas))
+            if work > SETTINGS.max_snapshot_work:
+                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+    return count
 
 
 def station_objs(items):
@@ -272,6 +359,14 @@ def server_info():
         "render_external_url": os.getenv("RENDER_EXTERNAL_URL"),
         "git_branch": os.getenv("RENDER_GIT_BRANCH"),
         "git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        "capabilities": {
+            "walker": True,
+            "multi_shell_walker": True,
+            "ground_track": True,
+            "minimum_elevation_footprint": True,
+            "tle_sgp4": sgp4_available(),
+            "multi_shell_cross_isl": False,
+        },
         "limits": {
             "max_satellites": SETTINGS.max_satellites,
             "max_tle_satellites": SETTINGS.max_tle_satellites,
@@ -336,6 +431,10 @@ def preset():
         "sats_per_plane": 16,
         "phasing": 1,
         "j2": True,
+        "multi_shells": [
+            {"id": "SH1", "name": "Core 1280 km", "altitude_km": 1280.0, "inclination_deg": 42.0, "planes": 8, "sats_per_plane": 16, "phasing": 1, "j2": True},
+            {"id": "SH2", "name": "High-inclination supplement", "altitude_km": 600.0, "inclination_deg": 70.0, "planes": 6, "sats_per_plane": 12, "phasing": 1, "j2": True},
+        ],
         "stations": [
             {"name": "Seoul", "lat_deg": 37.5665, "lon_deg": 126.9780, "min_elevation_deg": 20},
             {"name": "Dubai", "lat_deg": 25.2048, "lon_deg": 55.2708, "min_elevation_deg": 20},
@@ -351,6 +450,13 @@ def simulate(req: SimIn):
     c = constellation_from(req)
     sim = SimulationConfig(c, station_objs(req.stations), req.duration_min, req.step_sec, LinkBudgetConfig())
     return run_simulation(sim)
+
+
+@app.post("/api/multi-shell/simulate")
+def simulate_multi_shell(req: MultiShellSimIn):
+    count = _enforce_multi_shell_limits(req)
+    _enforce_sim_limits(req, count)
+    return run_multi_shell_simulation(shell_cfgs(req.shells), station_objs(req.stations), req.duration_min, req.step_sec)
 
 
 @app.post("/api/tle/simulate")
@@ -417,6 +523,15 @@ def snapshot(req: SnapshotIn):
                 orbit_samples=req.orbit_samples,
                 coverage_areas=[x.model_dump() for x in req.coverage_areas],
             )
+        if req.mode == "multi_shell":
+            _enforce_multi_shell_limits(req, snapshot=True)
+            return multi_shell_snapshot(
+                shell_cfgs(req.shells), req.time_sec,
+                min_elevation_deg=req.min_elevation_deg, heatmap=req.heatmap, heatmap_points=req.heatmap_points,
+                stations=station_objs(req.stations), include_orbits=req.include_orbits, include_isl=req.include_isl,
+                include_access=req.include_access, orbit_samples=req.orbit_samples,
+                coverage_areas=[x.model_dump() for x in req.coverage_areas],
+            )
         _enforce_walker_limits(req, snapshot=True)
         c = constellation_from(req)
         return walker_snapshot(
@@ -434,6 +549,23 @@ def snapshot(req: SnapshotIn):
         )
     except (SGP4UnavailableError, TLEParseError) as exc:
         _tle_error(exc)
+
+
+@app.post("/api/orbital-geometry")
+def orbital_geometry(req: OrbitalGeometryIn):
+    try:
+        common = dict(
+            min_elevation_deg=req.min_elevation_deg,
+            ground_track_span_min=req.ground_track_span_min,
+            ground_track_samples=req.ground_track_samples,
+            footprint_samples=req.footprint_samples,
+        )
+        if req.mode == "multi_shell":
+            return multi_shell_orbital_geometry(shell_cfgs(req.shells), req.satellite_id, req.time_sec, **common)
+        _enforce_walker_limits(req)
+        return walker_orbital_geometry(constellation_from(req), req.satellite_id, req.time_sec, **common)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/trade-study")

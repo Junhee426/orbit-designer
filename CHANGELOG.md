@@ -1,29 +1,25 @@
 # Changelog
 
+## 1.1.0 — Orbital Analysis
+
+- Added selected-satellite Ground Track rendering with dateline-safe segmentation.
+- Added minimum-elevation spherical visibility footprint calculation and Cesium overlay.
+- Added Multi-shell Walker mode with dynamic shell add/remove UI.
+- Added combined multi-shell coverage, access, heat-map, and service timeline analysis.
+- Added `/api/orbital-geometry` and `/api/multi-shell/simulate`.
+- Added multi-shell support to `/api/snapshot`.
+- Added Ground Track / Footprint Cesium layer controls.
+- Preserved global initial camera and disabled service-area auto zoom.
+- Removed `maxShutdownDelaySeconds` from `render.yaml` for Render Free-tier compatibility.
+- Updated product/package version to Test Orbit Designer V1.1.0.
+- Added geometry/multi-shell/API/UI regression tests.
+
+### Current V1.1 limitation
+
+Multi-shell ISL is computed within each shell. Cross-shell ISL and inter-shell routing are not yet implemented.
+
 ## 1.0.0 — Test Orbit Designer
 
-- Unified product display name to **Test Orbit Designer V1.0.0** across HTML, FastAPI, CLI, and package metadata.
-- Changed default Walker altitude from 888 km to **1280 km**.
-- Changed default Walker plane count from 16 to **8**.
-- Kept the default 16 satellites per plane, giving **128 satellites** at startup.
-- Retained the global initial camera view and no-auto-zoom service-area behavior.
-
-## Legacy development history
-
-## 1.5.0 — Render Server Edition
-
-- Added `Dockerfile` for Render-compatible container deployment.
-- Added `render.yaml` Blueprint: Docker web service, Singapore region, `/health`, commit auto-deploy.
-- Added `kleo-server` production entrypoint using `0.0.0.0` and Render's `$PORT`.
-- Added Render-aware server metadata endpoint (`/api/server-info`).
-- Added production response headers, request IDs, gzip, static-asset cache policy, and `robots.txt`.
-- Added configurable public-server workload guards for constellation size, TLE count, coverage resolution, simulation samples, and trade-study size.
-- Kept all scenario computations stateless so multiple browser users do not share constellation state.
-- Added Docker Compose and `.env.example` for production-like local testing.
-- Added Render deployment documentation and deployment contract tests.
-- Updated UI/version metadata to V1.5.0 Server Edition.
-
-## 1.4.2
-
-- Removed point-marker outlines.
-- Added selectable satellite GLB styles.
+- Unified product identity as Test Orbit Designer V1.0.0.
+- Default Walker configuration: 1280 km / 42 deg / 8 planes / 16 satellites per plane.
+- Render-ready FastAPI + CesiumJS deployment.

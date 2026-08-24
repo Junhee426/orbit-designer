@@ -1,136 +1,80 @@
-# Test Orbit Designer V1.0.0
+# Test Orbit Designer V1.1.0
 
-저궤도 위성통신망의 위성군·서비스 가용도·Coverage·ISL·Access를 설계하고 CesiumJS에서 시각화하는 Python/FastAPI 웹 애플리케이션입니다.
+저궤도(LEO) 위성군의 궤도 구성, 서비스 가시성, 3D 시각화 및 초기 Trade-off 분석을 위한 FastAPI + CesiumJS 기반 웹 도구입니다.
 
-V1.0.0은 기존 V1.4.2 기능을 유지하면서 **Render Web Service에 GitHub 저장소를 연결해 브라우저 서비스로 바로 배포**할 수 있도록 서버 배포 구조를 추가했습니다.
+V1.1.0은 V1.0.0의 Render 서버 구조와 Walker/TLE/Coverage/ISL 기능을 유지하면서 **Orbital Analysis** 기능을 확장합니다.
 
-## 주요 분석/시각화 기능
+## V1.1.0 핵심 추가 기능
 
-- Walker-Delta T/P/F 위성군
-- 2-body + 선택적 J2 RAAN drift
-- TLE / SGP4
-- CesiumJS WGS84 3D Earth
-- Offline NASA Blue Marble / Online ArcGIS World Imagery
-- 4종 3D satellite GLB / outline 없는 Point Marker
-- Earth on/off / opacity / satellite size
-- orbit / ISL / Access line
-- 국가별 Coverage surface overlay
-- 서비스 국가/지역 Multi-select
-- 주요 도시 service station 자동 생성
-- satellite selection / properties
-- time playback
-- service availability / handover / link budget / trade study
+### 1. Selected Satellite Ground Track
+- 3D 지구에서 Walker 또는 Multi-shell Walker 위성을 클릭하면 해당 위성의 지상궤적을 표시합니다.
+- 기본 표시 범위: 현재 시각 중심 ±110분(총 220분).
+- 날짜변경선(±180°) 통과 시 선을 자동 분할하여 지구를 가로지르는 잘못된 직선을 방지합니다.
+- UI에서 Ground track 표시 ON/OFF 및 span(30~720분)을 조정할 수 있습니다.
 
-## V1.0.0 추가 기능
-
-- `Dockerfile`
-- Render Blueprint `render.yaml`
-- production entrypoint `kleo-server`
-- Render `$PORT` 자동 사용
-- `0.0.0.0` bind
-- `/health` HTTP health check
-- `/api/server-info`
-- stateless multi-user request architecture
-- public-server workload limits
-- GZip middleware
-- request ID / security response headers
-- `/static/*` cache policy
-- `robots.txt` indexing disable
-- Docker Compose local production test
-- Singapore Render region 기본 설정
-
-## 가장 빠른 Render 배포
-
-### 1. 이 프로젝트를 GitHub 저장소에 업로드
-
-저장소 루트에 다음 파일이 있어야 합니다.
+### 2. Minimum-elevation Footprint
+- 선택 위성의 현재 Sub-satellite point를 중심으로 서비스 footprint를 표시합니다.
+- 구면 지구 모델에서 최소고도각 `E`에 대한 Earth-central half angle은 다음과 같습니다.
 
 ```text
-Dockerfile
-render.yaml
-pyproject.toml
-app/
-scripts/
+psi = acos((R_E / (R_E + h)) cos(E)) - E
 ```
 
-### 2. Render에서 Blueprint 생성
+- 지표면 footprint 반경은 `R_E * psi`입니다.
+- 직접 LOS는 지평선 아래로 확장할 수 없으므로 footprint 계산에서 `E < 0°`는 0°로 제한합니다.
+- 예: 1280 km, 최소고도각 20°에서 footprint 지표 반경은 약 2,059 km입니다.
+
+### 3. Multi-shell Walker
+Propagation mode에 `Multi-shell Walker`가 추가되었습니다.
+
+기본 예시:
+
+| Shell | Altitude | Inclination | Planes | Sats/plane | Total |
+|---|---:|---:|---:|---:|---:|
+| SH1 Core | 1280 km | 42° | 8 | 16 | 128 |
+| SH2 High-inclination | 600 km | 70° | 6 | 12 | 72 |
+| **합계** | | | | | **200** |
+
+- Shell 추가/삭제 가능
+- Shell별 고도, 경사각, planes, sats/plane, Walker F, J2 설정
+- 모든 shell을 합산해 서비스 가시성/Heat Map/Access를 계산
+- 궤도선은 shell별로 생성
+- V1.1 ISL은 **각 shell 내부 Walker ISL**만 생성하며 cross-shell ISL은 아직 포함하지 않습니다.
+
+### 4. Cesium Layer Controls
+기존 Earth / Orbit / ISL / Access / Coverage와 함께 다음 레이어가 추가되었습니다.
+
+- Selected ground track
+- Selected footprint
+- Ground track span
+
+위성을 클릭할 때 Ground Track/Footprint만 별도 API로 요청하므로 전체 Heat Map을 매번 다시 계산하지 않습니다.
+
+## 기본 Single-shell 설정
 
 ```text
-Render Dashboard
-  → New
-  → Blueprint
-  → GitHub repository 선택
-  → Apply
+Altitude        1280 km
+Inclination       42 deg
+Planes              8
+Sats / plane       16
+Walker F             1
+J2 RAAN drift       On
+Total satellites   128
 ```
 
-Render가 저장소의 `render.yaml`을 읽어 Web Service를 생성합니다.
+## 실행
 
-기본 Blueprint:
-
-```text
-Runtime       Docker
-Region        Singapore
-Plan          Free
-Health check  /health
-Auto deploy   every commit
-```
-
-배포가 완료되면 다음과 같은 URL이 생성됩니다.
-
-```text
-https://k-leo-orbit-designer.onrender.com
-```
-
-실제 서비스 이름에 따라 주소는 달라집니다.
-
-상세 절차는 `RENDER_DEPLOYMENT.md`를 참고하세요.
-
-## Render 서버 실행 구조
-
-```text
-Browser
-   │
-   │ HTTPS
-   ▼
-Render Edge
-   │
-   ▼
-Docker Web Service
-   │
-   ├─ FastAPI
-   │    ├ Walker / SGP4
-   │    ├ Coverage
-   │    ├ ISL / Routing
-   │    └ Trade Study
-   │
-   └─ Static frontend
-        ├ CesiumJS UI
-        ├ Blue Marble
-        ├ GLB satellites
-        └ Plotly
-```
-
-브라우저별 시나리오 상태는 서버 전역에 저장하지 않습니다. 각 API 요청에 설정을 포함하므로 여러 사용자가 서로 다른 고도·경사각·서비스 국가를 동시에 분석해도 설정이 섞이지 않습니다.
-
-## Render PORT 처리
-
-Render 서버에서는 다음 명령을 직접 입력할 필요가 없습니다.
-
-`app.server`가 자동으로:
-
-```text
-host = 0.0.0.0
-port = $PORT
-```
-
-를 사용합니다. `$PORT`가 없으면 10000을 기본값으로 사용합니다.
-
-## 로컬 개발
+Python 3.12 + uv 권장:
 
 ```bash
-uv python install 3.12
 uv sync
 uv run kleo
+```
+
+개발 자동 reload:
+
+```bash
+uv run kleo --reload
 ```
 
 브라우저:
@@ -139,190 +83,170 @@ uv run kleo
 http://127.0.0.1:8000
 ```
 
-개발 모드:
+## Render 배포
 
-```bash
-uv run kleo --reload
-```
-
-## 로컬 Server Edition 실행
-
-Render와 유사하게 실행하려면:
-
-```bash
-PORT=10000 KLEO_SERVER_MODE=production uv run kleo-server
-```
-
-Windows PowerShell:
-
-```powershell
-$env:PORT="10000"
-$env:KLEO_SERVER_MODE="production"
-uv run kleo-server
-```
-
-접속:
+GitHub 저장소 root에 다음 파일이 있어야 합니다.
 
 ```text
-http://127.0.0.1:10000
+Dockerfile
+render.yaml
+pyproject.toml
+app/
 ```
 
-## Docker local test
+Render에서 `New -> Blueprint`로 저장소를 연결합니다. V1.1.0의 `render.yaml`은 Free tier와 호환되도록 `maxShutdownDelaySeconds`를 포함하지 않습니다.
 
-```bash
-docker compose up --build
-```
-
-접속:
+Health check:
 
 ```text
-http://127.0.0.1:10000
+/health
 ```
 
-## Server workload limits
+Render가 제공하는 `$PORT`를 `kleo-server`가 자동 사용합니다.
 
-Render 공개 서비스에서 비정상적으로 큰 분석 요청이 서버를 점유하지 않도록 기본 계산 상한을 적용합니다.
+## 내부망 / Offline Cesium
 
-```text
-KLEO_MAX_SATELLITES          4096
-KLEO_MAX_TLE_SATELLITES      512
-KLEO_MAX_STATIONS              24
-KLEO_MAX_COVERAGE_AREAS        18
-KLEO_MAX_HEATMAP_POINTS         60
-KLEO_MAX_SIM_SAMPLES          3000
-KLEO_MAX_TRADE_CASES            64
-```
-
-추가 workload 상한도 `render.yaml`과 `.env.example`에서 조정할 수 있습니다.
-
-기본 1280 km / 42° / 8×16 = 128기 시나리오는 기본 상한보다 충분히 작습니다.
-
-상한 초과 요청은 HTTP `413`으로 거절됩니다.
-
-## Server endpoints
-
-```text
-GET  /                         CesiumJS web UI
-GET  /health                   Render health check
-GET  /api/server-info          server/deployment metadata
-GET  /docs                     FastAPI Swagger UI
-GET  /api/service-regions/catalog
-POST /api/service-regions/resolve
-POST /api/snapshot
-POST /api/simulate
-POST /api/tle/parse
-POST /api/tle/simulate
-POST /api/trade-study
-```
-
-## Cesium / Earth Asset 정책
-
-Render 공개 배포에서는 Docker image 크기를 줄이기 위해 다음 구조를 사용합니다.
-
-```text
-CesiumJS runtime
-  local vendor가 있으면 local
-  없으면 official Cesium CDN
-
-Earth
-  Online: ArcGIS World Imagery
-  failure → local Blue Marble fallback
-
-Satellite GLB
-  always local
-```
-
-프로젝트에 포함된 로컬 Asset:
-
-```text
-app/static/earth_blue_marble_2048.jpg
-app/static/kleo_satellite.glb
-app/static/kleo_satellite_compact.glb
-app/static/kleo_satellite_broadband.glb
-app/static/kleo_satellite_flatpanel.glb
-app/static/service_boundaries_fallback.geojson
-```
-
-완전 self-contained Docker image가 필요하면 인터넷 연결 환경에서:
+인터넷이 되는 환경에서 먼저:
 
 ```bash
 uv run kleo-bootstrap-assets
 ```
 
-으로 CesiumJS와 Natural Earth 경계 데이터를 vendor한 뒤 image를 빌드할 수 있습니다.
+을 실행하면 로컬 CesiumJS와 Natural Earth 국가경계 asset을 설치할 수 있습니다.
 
-## Render Free와 운영용 Plan
+주요 위치:
 
-`render.yaml`은 최초 테스트가 쉽도록 `plan: free`를 기본값으로 둡니다.
-
-Free Web Service는 개발/검증용으로 사용하고, 실제 상시 업무 서비스는 Render Dashboard 또는 `render.yaml`에서:
-
-```yaml
-plan: starter
+```text
+app/static/vendor/cesium/
+app/static/ne_50m_admin_0_countries.geojson
+app/static/earth_blue_marble_2048.jpg
 ```
 
-이상으로 변경하는 것을 권장합니다.
+## 주요 API
 
-## 검증
+### Health
+
+```text
+GET /health
+```
+
+### Single Walker snapshot
+
+```text
+POST /api/snapshot
+mode = walker
+```
+
+### Multi-shell snapshot
+
+```text
+POST /api/snapshot
+mode = multi_shell
+shells = [...]
+```
+
+예제 payload는 `examples/multishell_v1_1.json`을 참고하십시오.
+
+### Multi-shell service simulation
+
+```text
+POST /api/multi-shell/simulate
+```
+
+### Selected satellite Ground Track + Footprint
+
+```text
+POST /api/orbital-geometry
+```
+
+Single Walker 예:
+
+```json
+{
+  "mode": "walker",
+  "satellite_id": "P01-S01",
+  "time_sec": 0,
+  "altitude_km": 1280,
+  "inclination_deg": 42,
+  "planes": 8,
+  "sats_per_plane": 16,
+  "phasing": 1,
+  "j2": true,
+  "min_elevation_deg": 20,
+  "ground_track_span_min": 220
+}
+```
+
+Multi-shell 예:
+
+```json
+{
+  "mode": "multi_shell",
+  "satellite_id": "SH2-P01-S01",
+  "time_sec": 0,
+  "min_elevation_deg": 20,
+  "shells": [
+    {
+      "id": "SH1",
+      "name": "Core 1280 km",
+      "altitude_km": 1280,
+      "inclination_deg": 42,
+      "planes": 8,
+      "sats_per_plane": 16,
+      "phasing": 1,
+      "j2": true
+    },
+    {
+      "id": "SH2",
+      "name": "High-inclination supplement",
+      "altitude_km": 600,
+      "inclination_deg": 70,
+      "planes": 6,
+      "sats_per_plane": 12,
+      "phasing": 1,
+      "j2": true
+    }
+  ]
+}
+```
+
+## V1.1 물리 모델 범위
+
+현재 Walker 기반 분석은 다음을 포함합니다.
+
+- Newtonian two-body circular orbit
+- Kepler mean motion / orbital period
+- Walker-Delta T/P/F phasing
+- J2 secular RAAN drift
+- Earth rotation (ECI -> ECEF)
+- Ground-station elevation / slant range
+- Earth occultation for ISL
+- Minimum-elevation spherical footprint
+- Ground track
+- Propagation delay
+- Basic Ka-band link budget
+- TLE / SGP4 mode (sgp4 package가 설치된 환경)
+
+아직 정밀 Walker propagator에는 atmospheric drag, J3/J4+, Sun/Moon third-body, SRP, maneuver/station-keeping은 포함하지 않습니다.
+
+## V1.1 설계 의도
+
+V1.1은 정밀 궤도결정 도구가 아니라 **LEO constellation orbital/service geometry를 빠르게 설계하고 비교하는 engineering tool**입니다. 대규모 위성군 분석은 기존 빠른 analytical propagator를 유지하고, 추후 Precision Mode를 별도 엔진으로 추가하는 구조를 권장합니다.
+
+## 테스트
 
 ```bash
-uv run pytest -ra
-uv run kleo-validate
+uv run pytest
 ```
 
-V1.0.0 검증 결과:
+V1.1.0 검증에는 기존 회귀시험과 다음 항목이 포함됩니다.
 
-```text
-51 passed
-1 skipped
-Python compileall       PASS
-JavaScript node check   PASS
-render.yaml parse       PASS
-Python wheel build      PASS
-Production HTTP smoke   PASS
-```
+- Ground Track 날짜변경선 처리
+- Footprint 공식과 최소고도각 변화
+- Multi-shell snapshot
+- Multi-shell service simulation
+- Multi-shell satellite geometry
+- Render Free-tier Blueprint contract
+- UI layer contract
 
-실제 production entrypoint를 `$PORT=18081`로 실행해 다음을 검증했습니다.
-
-```text
-/health                         200
-/                               200
-/static/kleo_satellite.glb      200
-/api/server-info                200
-/api/snapshot                   200
-```
-
-K-LEO snapshot:
-
-```text
-satellites   256
-orbit paths   16
-ISL links    512
-```
-
-현재 검증 sandbox에는 Docker engine이 없어 `docker build` 자체만 실행하지 못했습니다. 대신 Dockerfile이 설치하는 Python wheel을 빌드하고, Docker `CMD`와 동일한 `kleo-server` production process를 실제 HTTP로 검증했습니다.
-
-## 프로젝트 구조
-
-```text
-Dockerfile
-render.yaml
-docker-compose.yml
-.env.example
-RENDER_DEPLOYMENT.md
-
-app/
-  main.py
-  server.py
-  server_config.py
-  cli.py
-  core/
-  static/
-
-scripts/
-tests/
-```
-
-## 정확도 범위
-
-본 도구는 LEO 위성통신망 개념설계·정책·Trade Study용입니다. Walker 모드는 2-body/J2 중심이며 TLE 모드는 `sgp4` 라이브러리를 사용합니다. STK HPOP/Orekit 수준의 고정밀 flight dynamics를 대체하도록 검증된 것은 아닙니다.
+자세한 결과는 `VALIDATION_REPORT.md`를 참조하십시오.

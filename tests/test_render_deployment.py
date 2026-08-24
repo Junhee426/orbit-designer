@@ -11,6 +11,7 @@ def test_render_blueprint_contract():
     assert "healthCheckPath: /health" in text
     assert "autoDeployTrigger: commit" in text
     assert "KLEO_SERVER_MODE" in text
+    assert "maxShutdownDelaySeconds" not in text
 
 
 def test_dockerfile_contract():
