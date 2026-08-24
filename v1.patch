@@ -1,0 +1,2166 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 7d5040a..52db8a2 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,29 +1,25 @@
+ # Changelog
+ 
+-## 1.0.0 — Test Orbit Designer
+-
+-- Unified product display name to **Test Orbit Designer V1.0.0** across HTML, FastAPI, CLI, and package metadata.
+-- Changed default Walker altitude from 888 km to **1280 km**.
+-- Changed default Walker plane count from 16 to **8**.
+-- Kept the default 16 satellites per plane, giving **128 satellites** at startup.
+-- Retained the global initial camera view and no-auto-zoom service-area behavior.
++## 1.1.0 — Orbital Analysis
+ 
+-## Legacy development history
++- Added selected-satellite Ground Track rendering with dateline-safe segmentation.
++- Added minimum-elevation spherical visibility footprint calculation and Cesium overlay.
++- Added Multi-shell Walker mode with dynamic shell add/remove UI.
++- Added combined multi-shell coverage, access, heat-map, and service timeline analysis.
++- Added `/api/orbital-geometry` and `/api/multi-shell/simulate`.
++- Added multi-shell support to `/api/snapshot`.
++- Added Ground Track / Footprint Cesium layer controls.
++- Preserved global initial camera and disabled service-area auto zoom.
++- Removed `maxShutdownDelaySeconds` from `render.yaml` for Render Free-tier compatibility.
++- Updated product/package version to Test Orbit Designer V1.1.0.
++- Added geometry/multi-shell/API/UI regression tests.
+ 
+-## 1.5.0 — Render Server Edition
++### Current V1.1 limitation
+ 
+-- Added `Dockerfile` for Render-compatible container deployment.
+-- Added `render.yaml` Blueprint: Docker web service, Singapore region, `/health`, commit auto-deploy.
+-- Added `kleo-server` production entrypoint using `0.0.0.0` and Render's `$PORT`.
+-- Added Render-aware server metadata endpoint (`/api/server-info`).
+-- Added production response headers, request IDs, gzip, static-asset cache policy, and `robots.txt`.
+-- Added configurable public-server workload guards for constellation size, TLE count, coverage resolution, simulation samples, and trade-study size.
+-- Kept all scenario computations stateless so multiple browser users do not share constellation state.
+-- Added Docker Compose and `.env.example` for production-like local testing.
+-- Added Render deployment documentation and deployment contract tests.
+-- Updated UI/version metadata to V1.5.0 Server Edition.
++Multi-shell ISL is computed within each shell. Cross-shell ISL and inter-shell routing are not yet implemented.
+ 
+-## 1.4.2
++## 1.0.0 — Test Orbit Designer
+ 
+-- Removed point-marker outlines.
+-- Added selectable satellite GLB styles.
++- Unified product identity as Test Orbit Designer V1.0.0.
++- Default Walker configuration: 1280 km / 42 deg / 8 planes / 16 satellites per plane.
++- Render-ready FastAPI + CesiumJS deployment.
+diff --git a/DEVELOPMENT.md b/DEVELOPMENT.md
+index 569f2c9..d97c009 100644
+--- a/DEVELOPMENT.md
++++ b/DEVELOPMENT.md
+@@ -1,46 +1,50 @@
+-# Development — Test Orbit Designer V1.0.0
++# Development — Test Orbit Designer V1.1.0
+ 
+-## Local uv development
+-
+-```bash
+-uv python install 3.12
+-uv sync
+-uv run kleo --reload
+-```
+-
+-Local browser URL:
++## Architecture
+ 
+ ```text
+-http://127.0.0.1:8000
++CesiumJS browser UI
++       |
++       v
++FastAPI
++  |-- Walker analytical propagator
++  |-- Multi-shell combiner
++  |-- Ground Track / Footprint geometry
++  |-- Coverage / Heat Map
++  |-- ISL / Access / Routing
++  `-- TLE / SGP4
+ ```
+ 
+-## Production-like local server
+-
+-```bash
+-PORT=10000 KLEO_SERVER_MODE=production uv run kleo-server
+-```
++## New V1.1 modules
+ 
+-Unlike `kleo`, `kleo-server` never opens a browser and always binds to `0.0.0.0` using `$PORT`.
++- `app/core/geometry.py`
++  - minimum-elevation footprint
++  - footprint polygon
++  - Walker selected-satellite ground track
++  - selected Walker orbital geometry
++- `app/core/multishell.py`
++  - combined shell state
++  - multi-shell snapshot
++  - combined station visibility timeline
++  - multi-shell service simulation
++  - selected multi-shell satellite geometry
+ 
+-## Tests
++## Run
+ 
+ ```bash
+-uv run pytest -ra
+-uv run kleo-validate
++uv sync
++uv run kleo --reload
+ ```
+ 
+-## Docker
++## Tests
+ 
+ ```bash
+-docker compose up --build
++uv run pytest
+ ```
+ 
+-Open `http://127.0.0.1:10000`.
+-
+-## Server-limit configuration
+-
+-See `.env.example` and `render.yaml`. Limits are read once at application startup by `app/server_config.py`.
+-
+-## Render
++## Design constraints
+ 
+-See `RENDER_DEPLOYMENT.md` for the GitHub → Render Blueprint workflow.
++- The fast Walker engine remains analytical for large-constellation trade studies.
++- Ground Track and Footprint are selected-satellite layers to reduce Cesium/server workload.
++- Multi-shell V1.1 ISL is intra-shell only.
++- API requests remain stateless for concurrent Render users.
+diff --git a/ENVIRONMENT_VALIDATION.md b/ENVIRONMENT_VALIDATION.md
+index 3934cdc..45d3c94 100644
+--- a/ENVIRONMENT_VALIDATION.md
++++ b/ENVIRONMENT_VALIDATION.md
+@@ -1,50 +1,18 @@
+-# Environment Validation — Test Orbit Designer V1.0.0
++# Environment Validation — Test Orbit Designer V1.1.0
+ 
+-## Result
++Validation environment uses the available Python 3.12-compatible runtime in the execution sandbox.
+ 
+-- Python compileall: **PASS**
+-- Browser JavaScript `node --check`: **PASS**
+-- `render.yaml` YAML parse and deployment-contract checks: **PASS**
+-- Pytest: **51 passed / 1 skipped**
+-- Python wheel build: **PASS**
+-- Production Uvicorn HTTP smoke using `$PORT=18081`: **PASS**
+-- Docker image build: **NOT RUN** because the sandbox does not provide a Docker engine
++Validated:
+ 
+-## Production HTTP smoke
++- Python source compilation
++- FastAPI TestClient endpoints
++- Cesium frontend JavaScript syntax (`node --check`)
++- 62 automated tests
++- Python wheel build
++- production-style HTTP server smoke test
+ 
+-The production entrypoint `python -m app.server` was started with:
++Conditional skip:
+ 
+-```text
+-PORT=18081
+-KLEO_SERVER_MODE=production
+-WEB_CONCURRENCY=1
+-```
++- One Vallado SGP4 reference-vector test is skipped when the external `sgp4` runtime is unavailable in the sandbox. `sgp4` remains declared in `pyproject.toml` and is installed by a normal `uv sync` / Docker build with package access.
+ 
+-Verified:
+-
+-```text
+-GET  /health                         200
+-GET  /                              200
+-GET  /static/kleo_satellite.glb     200
+-GET  /api/server-info               200
+-POST /api/snapshot                  200
+-```
+-
+-K-LEO snapshot response:
+-
+-```text
+-satellites   256
+-orbit paths   16
+-ISL links    512
+-```
+-
+-Cache behavior:
+-
+-```text
+-API/root: no-store
+-/static/*: public, max-age=86400
+-```
+-
+-## Conditional skip
+-
+-The historical SGP4 reference-vector test is skipped only because the current sandbox cannot download/install the external `sgp4` runtime. `sgp4` remains a normal project dependency and is installed during a connected Render/Docker build.
++Docker Engine is not required for the source-level validation. The same `app.server` production entrypoint used by the Docker container is tested directly.
+diff --git a/README.md b/README.md
+index 5ed3ded..80727cd 100644
+--- a/README.md
++++ b/README.md
+@@ -1,328 +1,252 @@
+-# Test Orbit Designer V1.0.0
+-
+-저궤도 위성통신망의 위성군·서비스 가용도·Coverage·ISL·Access를 설계하고 CesiumJS에서 시각화하는 Python/FastAPI 웹 애플리케이션입니다.
+-
+-V1.0.0은 기존 V1.4.2 기능을 유지하면서 **Render Web Service에 GitHub 저장소를 연결해 브라우저 서비스로 바로 배포**할 수 있도록 서버 배포 구조를 추가했습니다.
+-
+-## 주요 분석/시각화 기능
+-
+-- Walker-Delta T/P/F 위성군
+-- 2-body + 선택적 J2 RAAN drift
+-- TLE / SGP4
+-- CesiumJS WGS84 3D Earth
+-- Offline NASA Blue Marble / Online ArcGIS World Imagery
+-- 4종 3D satellite GLB / outline 없는 Point Marker
+-- Earth on/off / opacity / satellite size
+-- orbit / ISL / Access line
+-- 국가별 Coverage surface overlay
+-- 서비스 국가/지역 Multi-select
+-- 주요 도시 service station 자동 생성
+-- satellite selection / properties
+-- time playback
+-- service availability / handover / link budget / trade study
+-
+-## V1.0.0 추가 기능
+-
+-- `Dockerfile`
+-- Render Blueprint `render.yaml`
+-- production entrypoint `kleo-server`
+-- Render `$PORT` 자동 사용
+-- `0.0.0.0` bind
+-- `/health` HTTP health check
+-- `/api/server-info`
+-- stateless multi-user request architecture
+-- public-server workload limits
+-- GZip middleware
+-- request ID / security response headers
+-- `/static/*` cache policy
+-- `robots.txt` indexing disable
+-- Docker Compose local production test
+-- Singapore Render region 기본 설정
+-
+-## 가장 빠른 Render 배포
+-
+-### 1. 이 프로젝트를 GitHub 저장소에 업로드
+-
+-저장소 루트에 다음 파일이 있어야 합니다.
++# Test Orbit Designer V1.1.0
+ 
+-```text
+-Dockerfile
+-render.yaml
+-pyproject.toml
+-app/
+-scripts/
+-```
++저궤도(LEO) 위성군의 궤도 구성, 서비스 가시성, 3D 시각화 및 초기 Trade-off 분석을 위한 FastAPI + CesiumJS 기반 웹 도구입니다.
+ 
+-### 2. Render에서 Blueprint 생성
++V1.1.0은 V1.0.0의 Render 서버 구조와 Walker/TLE/Coverage/ISL 기능을 유지하면서 **Orbital Analysis** 기능을 확장합니다.
+ 
+-```text
+-Render Dashboard
+-  → New
+-  → Blueprint
+-  → GitHub repository 선택
+-  → Apply
+-```
++## V1.1.0 핵심 추가 기능
+ 
+-Render가 저장소의 `render.yaml`을 읽어 Web Service를 생성합니다.
++### 1. Selected Satellite Ground Track
++- 3D 지구에서 Walker 또는 Multi-shell Walker 위성을 클릭하면 해당 위성의 지상궤적을 표시합니다.
++- 기본 표시 범위: 현재 시각 중심 ±110분(총 220분).
++- 날짜변경선(±180°) 통과 시 선을 자동 분할하여 지구를 가로지르는 잘못된 직선을 방지합니다.
++- UI에서 Ground track 표시 ON/OFF 및 span(30~720분)을 조정할 수 있습니다.
+ 
+-기본 Blueprint:
++### 2. Minimum-elevation Footprint
++- 선택 위성의 현재 Sub-satellite point를 중심으로 서비스 footprint를 표시합니다.
++- 구면 지구 모델에서 최소고도각 `E`에 대한 Earth-central half angle은 다음과 같습니다.
+ 
+ ```text
+-Runtime       Docker
+-Region        Singapore
+-Plan          Free
+-Health check  /health
+-Auto deploy   every commit
++psi = acos((R_E / (R_E + h)) cos(E)) - E
+ ```
+ 
+-배포가 완료되면 다음과 같은 URL이 생성됩니다.
++- 지표면 footprint 반경은 `R_E * psi`입니다.
++- 직접 LOS는 지평선 아래로 확장할 수 없으므로 footprint 계산에서 `E < 0°`는 0°로 제한합니다.
++- 예: 1280 km, 최소고도각 20°에서 footprint 지표 반경은 약 2,059 km입니다.
+ 
+-```text
+-https://k-leo-orbit-designer.onrender.com
+-```
+-
+-실제 서비스 이름에 따라 주소는 달라집니다.
++### 3. Multi-shell Walker
++Propagation mode에 `Multi-shell Walker`가 추가되었습니다.
+ 
+-상세 절차는 `RENDER_DEPLOYMENT.md`를 참고하세요.
++기본 예시:
+ 
+-## Render 서버 실행 구조
++| Shell | Altitude | Inclination | Planes | Sats/plane | Total |
++|---|---:|---:|---:|---:|---:|
++| SH1 Core | 1280 km | 42° | 8 | 16 | 128 |
++| SH2 High-inclination | 600 km | 70° | 6 | 12 | 72 |
++| **합계** | | | | | **200** |
+ 
+-```text
+-Browser
+-   │
+-   │ HTTPS
+-   ▼
+-Render Edge
+-   │
+-   ▼
+-Docker Web Service
+-   │
+-   ├─ FastAPI
+-   │    ├ Walker / SGP4
+-   │    ├ Coverage
+-   │    ├ ISL / Routing
+-   │    └ Trade Study
+-   │
+-   └─ Static frontend
+-        ├ CesiumJS UI
+-        ├ Blue Marble
+-        ├ GLB satellites
+-        └ Plotly
+-```
++- Shell 추가/삭제 가능
++- Shell별 고도, 경사각, planes, sats/plane, Walker F, J2 설정
++- 모든 shell을 합산해 서비스 가시성/Heat Map/Access를 계산
++- 궤도선은 shell별로 생성
++- V1.1 ISL은 **각 shell 내부 Walker ISL**만 생성하며 cross-shell ISL은 아직 포함하지 않습니다.
+ 
+-브라우저별 시나리오 상태는 서버 전역에 저장하지 않습니다. 각 API 요청에 설정을 포함하므로 여러 사용자가 서로 다른 고도·경사각·서비스 국가를 동시에 분석해도 설정이 섞이지 않습니다.
++### 4. Cesium Layer Controls
++기존 Earth / Orbit / ISL / Access / Coverage와 함께 다음 레이어가 추가되었습니다.
+ 
+-## Render PORT 처리
++- Selected ground track
++- Selected footprint
++- Ground track span
+ 
+-Render 서버에서는 다음 명령을 직접 입력할 필요가 없습니다.
++위성을 클릭할 때 Ground Track/Footprint만 별도 API로 요청하므로 전체 Heat Map을 매번 다시 계산하지 않습니다.
+ 
+-`app.server`가 자동으로:
++## 기본 Single-shell 설정
+ 
+ ```text
+-host = 0.0.0.0
+-port = $PORT
++Altitude        1280 km
++Inclination       42 deg
++Planes              8
++Sats / plane       16
++Walker F             1
++J2 RAAN drift       On
++Total satellites   128
+ ```
+ 
+-를 사용합니다. `$PORT`가 없으면 10000을 기본값으로 사용합니다.
++## 실행
+ 
+-## 로컬 개발
++Python 3.12 + uv 권장:
+ 
+ ```bash
+-uv python install 3.12
+ uv sync
+ uv run kleo
+ ```
+ 
+-브라우저:
+-
+-```text
+-http://127.0.0.1:8000
+-```
+-
+-개발 모드:
++개발 자동 reload:
+ 
+ ```bash
+ uv run kleo --reload
+ ```
+ 
+-## 로컬 Server Edition 실행
+-
+-Render와 유사하게 실행하려면:
++브라우저:
+ 
+-```bash
+-PORT=10000 KLEO_SERVER_MODE=production uv run kleo-server
++```text
++http://127.0.0.1:8000
+ ```
+ 
+-Windows PowerShell:
+-
+-```powershell
+-$env:PORT="10000"
+-$env:KLEO_SERVER_MODE="production"
+-uv run kleo-server
+-```
++## Render 배포
+ 
+-접속:
++GitHub 저장소 root에 다음 파일이 있어야 합니다.
+ 
+ ```text
+-http://127.0.0.1:10000
++Dockerfile
++render.yaml
++pyproject.toml
++app/
+ ```
+ 
+-## Docker local test
+-
+-```bash
+-docker compose up --build
+-```
++Render에서 `New -> Blueprint`로 저장소를 연결합니다. V1.1.0의 `render.yaml`은 Free tier와 호환되도록 `maxShutdownDelaySeconds`를 포함하지 않습니다.
+ 
+-접속:
++Health check:
+ 
+ ```text
+-http://127.0.0.1:10000
++/health
+ ```
+ 
+-## Server workload limits
++Render가 제공하는 `$PORT`를 `kleo-server`가 자동 사용합니다.
+ 
+-Render 공개 서비스에서 비정상적으로 큰 분석 요청이 서버를 점유하지 않도록 기본 계산 상한을 적용합니다.
++## 내부망 / Offline Cesium
+ 
+-```text
+-KLEO_MAX_SATELLITES          4096
+-KLEO_MAX_TLE_SATELLITES      512
+-KLEO_MAX_STATIONS              24
+-KLEO_MAX_COVERAGE_AREAS        18
+-KLEO_MAX_HEATMAP_POINTS         60
+-KLEO_MAX_SIM_SAMPLES          3000
+-KLEO_MAX_TRADE_CASES            64
+-```
++인터넷이 되는 환경에서 먼저:
+ 
+-추가 workload 상한도 `render.yaml`과 `.env.example`에서 조정할 수 있습니다.
+-
+-기본 1280 km / 42° / 8×16 = 128기 시나리오는 기본 상한보다 충분히 작습니다.
++```bash
++uv run kleo-bootstrap-assets
++```
+ 
+-상한 초과 요청은 HTTP `413`으로 거절됩니다.
++을 실행하면 로컬 CesiumJS와 Natural Earth 국가경계 asset을 설치할 수 있습니다.
+ 
+-## Server endpoints
++주요 위치:
+ 
+ ```text
+-GET  /                         CesiumJS web UI
+-GET  /health                   Render health check
+-GET  /api/server-info          server/deployment metadata
+-GET  /docs                     FastAPI Swagger UI
+-GET  /api/service-regions/catalog
+-POST /api/service-regions/resolve
+-POST /api/snapshot
+-POST /api/simulate
+-POST /api/tle/parse
+-POST /api/tle/simulate
+-POST /api/trade-study
++app/static/vendor/cesium/
++app/static/ne_50m_admin_0_countries.geojson
++app/static/earth_blue_marble_2048.jpg
+ ```
+ 
+-## Cesium / Earth Asset 정책
++## 주요 API
+ 
+-Render 공개 배포에서는 Docker image 크기를 줄이기 위해 다음 구조를 사용합니다.
++### Health
+ 
+ ```text
+-CesiumJS runtime
+-  local vendor가 있으면 local
+-  없으면 official Cesium CDN
+-
+-Earth
+-  Online: ArcGIS World Imagery
+-  failure → local Blue Marble fallback
+-
+-Satellite GLB
+-  always local
++GET /health
+ ```
+ 
+-프로젝트에 포함된 로컬 Asset:
++### Single Walker snapshot
+ 
+ ```text
+-app/static/earth_blue_marble_2048.jpg
+-app/static/kleo_satellite.glb
+-app/static/kleo_satellite_compact.glb
+-app/static/kleo_satellite_broadband.glb
+-app/static/kleo_satellite_flatpanel.glb
+-app/static/service_boundaries_fallback.geojson
++POST /api/snapshot
++mode = walker
+ ```
+ 
+-완전 self-contained Docker image가 필요하면 인터넷 연결 환경에서:
++### Multi-shell snapshot
+ 
+-```bash
+-uv run kleo-bootstrap-assets
++```text
++POST /api/snapshot
++mode = multi_shell
++shells = [...]
+ ```
+ 
+-으로 CesiumJS와 Natural Earth 경계 데이터를 vendor한 뒤 image를 빌드할 수 있습니다.
++예제 payload는 `examples/multishell_v1_1.json`을 참고하십시오.
+ 
+-## Render Free와 운영용 Plan
++### Multi-shell service simulation
+ 
+-`render.yaml`은 최초 테스트가 쉽도록 `plan: free`를 기본값으로 둡니다.
++```text
++POST /api/multi-shell/simulate
++```
+ 
+-Free Web Service는 개발/검증용으로 사용하고, 실제 상시 업무 서비스는 Render Dashboard 또는 `render.yaml`에서:
++### Selected satellite Ground Track + Footprint
+ 
+-```yaml
+-plan: starter
++```text
++POST /api/orbital-geometry
+ ```
+ 
+-이상으로 변경하는 것을 권장합니다.
+-
+-## 검증
++Single Walker 예:
+ 
+-```bash
+-uv run pytest -ra
+-uv run kleo-validate
++```json
++{
++  "mode": "walker",
++  "satellite_id": "P01-S01",
++  "time_sec": 0,
++  "altitude_km": 1280,
++  "inclination_deg": 42,
++  "planes": 8,
++  "sats_per_plane": 16,
++  "phasing": 1,
++  "j2": true,
++  "min_elevation_deg": 20,
++  "ground_track_span_min": 220
++}
+ ```
+ 
+-V1.0.0 검증 결과:
++Multi-shell 예:
+ 
+-```text
+-51 passed
+-1 skipped
+-Python compileall       PASS
+-JavaScript node check   PASS
+-render.yaml parse       PASS
+-Python wheel build      PASS
+-Production HTTP smoke   PASS
++```json
++{
++  "mode": "multi_shell",
++  "satellite_id": "SH2-P01-S01",
++  "time_sec": 0,
++  "min_elevation_deg": 20,
++  "shells": [
++    {
++      "id": "SH1",
++      "name": "Core 1280 km",
++      "altitude_km": 1280,
++      "inclination_deg": 42,
++      "planes": 8,
++      "sats_per_plane": 16,
++      "phasing": 1,
++      "j2": true
++    },
++    {
++      "id": "SH2",
++      "name": "High-inclination supplement",
++      "altitude_km": 600,
++      "inclination_deg": 70,
++      "planes": 6,
++      "sats_per_plane": 12,
++      "phasing": 1,
++      "j2": true
++    }
++  ]
++}
+ ```
+ 
+-실제 production entrypoint를 `$PORT=18081`로 실행해 다음을 검증했습니다.
++## V1.1 물리 모델 범위
+ 
+-```text
+-/health                         200
+-/                               200
+-/static/kleo_satellite.glb      200
+-/api/server-info                200
+-/api/snapshot                   200
+-```
++현재 Walker 기반 분석은 다음을 포함합니다.
+ 
+-K-LEO snapshot:
++- Newtonian two-body circular orbit
++- Kepler mean motion / orbital period
++- Walker-Delta T/P/F phasing
++- J2 secular RAAN drift
++- Earth rotation (ECI -> ECEF)
++- Ground-station elevation / slant range
++- Earth occultation for ISL
++- Minimum-elevation spherical footprint
++- Ground track
++- Propagation delay
++- Basic Ka-band link budget
++- TLE / SGP4 mode (sgp4 package가 설치된 환경)
+ 
+-```text
+-satellites   256
+-orbit paths   16
+-ISL links    512
+-```
++아직 정밀 Walker propagator에는 atmospheric drag, J3/J4+, Sun/Moon third-body, SRP, maneuver/station-keeping은 포함하지 않습니다.
+ 
+-현재 검증 sandbox에는 Docker engine이 없어 `docker build` 자체만 실행하지 못했습니다. 대신 Dockerfile이 설치하는 Python wheel을 빌드하고, Docker `CMD`와 동일한 `kleo-server` production process를 실제 HTTP로 검증했습니다.
++## V1.1 설계 의도
+ 
+-## 프로젝트 구조
++V1.1은 정밀 궤도결정 도구가 아니라 **LEO constellation orbital/service geometry를 빠르게 설계하고 비교하는 engineering tool**입니다. 대규모 위성군 분석은 기존 빠른 analytical propagator를 유지하고, 추후 Precision Mode를 별도 엔진으로 추가하는 구조를 권장합니다.
+ 
+-```text
+-Dockerfile
+-render.yaml
+-docker-compose.yml
+-.env.example
+-RENDER_DEPLOYMENT.md
++## 테스트
+ 
+-app/
+-  main.py
+-  server.py
+-  server_config.py
+-  cli.py
+-  core/
+-  static/
+-
+-scripts/
+-tests/
++```bash
++uv run pytest
+ ```
+ 
+-## 정확도 범위
++V1.1.0 검증에는 기존 회귀시험과 다음 항목이 포함됩니다.
++
++- Ground Track 날짜변경선 처리
++- Footprint 공식과 최소고도각 변화
++- Multi-shell snapshot
++- Multi-shell service simulation
++- Multi-shell satellite geometry
++- Render Free-tier Blueprint contract
++- UI layer contract
+ 
+-본 도구는 LEO 위성통신망 개념설계·정책·Trade Study용입니다. Walker 모드는 2-body/J2 중심이며 TLE 모드는 `sgp4` 라이브러리를 사용합니다. STK HPOP/Orekit 수준의 고정밀 flight dynamics를 대체하도록 검증된 것은 아닙니다.
++자세한 결과는 `VALIDATION_REPORT.md`를 참조하십시오.
+diff --git a/RENDER_DEPLOYMENT.md b/RENDER_DEPLOYMENT.md
+index 1b6dcb2..eea751b 100644
+--- a/RENDER_DEPLOYMENT.md
++++ b/RENDER_DEPLOYMENT.md
+@@ -1,114 +1,62 @@
+-# Render Deployment Guide — Test Orbit Designer V1.0.0
++# Render Deployment Guide — Test Orbit Designer V1.1.0
+ 
+-## Recommended architecture
++## 1. GitHub repository root
+ 
+-One Render Web Service serves both the FastAPI API and the CesiumJS frontend. No database is required. Simulation requests are stateless: each browser sends its current constellation/service-area settings with the request.
++Confirm these files are at repository root:
+ 
+-## 1. Push the project to GitHub
+-
+-The repository root must contain:
+-
+-- `Dockerfile`
+-- `render.yaml`
+-- `pyproject.toml`
+-- `app/`
+-- `scripts/`
+-
+-Do not commit `.venv`, build outputs, or secrets.
+-
+-## 2. Deploy with a Render Blueprint
+-
+-1. Sign in to Render.
+-2. Choose **New → Blueprint**.
+-3. Connect the GitHub repository containing this project.
+-4. Render detects `render.yaml` in the repository root.
+-5. Apply the Blueprint.
+-6. Wait for `/health` to report healthy.
+-7. Open the generated `https://<service>.onrender.com` URL.
+-
+-The supplied Blueprint uses:
+-
+-- Web Service
+-- Docker runtime
+-- Singapore region
+-- Free plan by default
+-- `/health` HTTP health check
+-- auto-deploy on commits
+-
+-For continuous operational use, change `plan: free` to `starter` or a higher plan. The Free web-service plan spins down after inactivity and has an ephemeral filesystem.
+-
+-## 3. Render networking
+-
+-`app.server` binds Uvicorn to:
+-
+-- host: `0.0.0.0`
+-- port: `$PORT` (defaults to `10000`)
+-
+-Do not hard-code a public hostname. Render terminates HTTPS at its edge and forwards traffic to the container.
+-
+-## 4. Cesium / Earth assets
+-
+-The deployed app always includes local fallback assets:
+-
+-- NASA Blue Marble texture
+-- 4 satellite GLB models
+-- service-boundary fallback GeoJSON
+-- Plotly bundle used by analysis panels
+-
+-CesiumJS itself uses the configured local vendor copy when present and otherwise loads the official Cesium CDN. Online Earth uses ArcGIS World Imagery, with automatic fallback to the included Blue Marble image.
+-
+-For a public Render deployment this keeps the Docker image small. If a fully self-contained image is required later, run `kleo-bootstrap-assets` before building and commit/vendor the resulting Cesium/Natural Earth assets.
+-
+-## 5. Public-server workload limits
+-
+-The Server Edition rejects requests above configurable limits. Defaults are in `render.yaml` and `.env.example`.
+-
+-Important variables:
+-
+-- `KLEO_MAX_SATELLITES=4096`
+-- `KLEO_MAX_TLE_SATELLITES=512`
+-- `KLEO_MAX_HEATMAP_POINTS=60`
+-- `KLEO_MAX_COVERAGE_AREAS=18`
+-- `KLEO_MAX_SIM_SAMPLES=3000`
+-- `KLEO_MAX_TRADE_CASES=64`
+-
+-Default 1280 km / 42° / 8×16 = 128 satellites is comfortably below these limits.
++```text
++Dockerfile
++render.yaml
++pyproject.toml
++app/
++```
+ 
+-## 6. Health and diagnostics
++## 2. Render
+ 
+-- `GET /health` — lightweight readiness endpoint for Render
+-- `GET /api/server-info` — version, Render metadata, and configured public-workload limits
+-- `GET /docs` — FastAPI interactive API documentation
++1. Render Dashboard -> **New -> Blueprint**
++2. Connect the GitHub repository.
++3. Select the branch containing V1.1.0.
++4. Apply the Blueprint.
+ 
+-`/api/server-info` can be disabled by setting `KLEO_EXPOSE_SERVER_INFO=false`.
++`render.yaml` uses:
+ 
+-## 7. Local production-like test
++```text
++runtime: docker
++plan: free
++region: singapore
++healthCheckPath: /health
++autoDeployTrigger: commit
++```
+ 
+-Without Docker:
++V1.1.0 intentionally omits `maxShutdownDelaySeconds`, because that field is not supported by Render Free-tier services.
+ 
+-```bash
+-uv sync
+-PORT=10000 KLEO_SERVER_MODE=production uv run kleo-server
+-```
++## 3. Verify
+ 
+-Open:
++After deployment:
+ 
+ ```text
+-http://127.0.0.1:10000
++https://<service>.onrender.com/health
++https://<service>.onrender.com/api/server-info
++https://<service>.onrender.com/docs
++https://<service>.onrender.com/
+ ```
+ 
+-With Docker:
++Expected health version:
+ 
+-```bash
+-docker compose up --build
++```json
++{"status":"ok","name":"Test Orbit Designer","version":"1.1.0"}
+ ```
+ 
+-Then open the same URL.
++## 4. New V1.1 endpoints
+ 
+-## 8. Custom domain
++```text
++POST /api/multi-shell/simulate
++POST /api/orbital-geometry
++POST /api/snapshot  (mode=multi_shell supported)
++```
+ 
+-After the service is healthy, add a custom domain from the Render service settings. Render provides managed TLS for supported custom domains.
++## 5. Free tier notes
+ 
+-## 9. Persistence
++Render Free services may spin down after inactivity. This does not affect application correctness but the first request after idle can take longer.
+ 
+-This version intentionally stores no user scenario state on the server. Render's local filesystem is ephemeral, so persistent scenarios should later be stored in a database/object store rather than written to local files.
++For permanent internal operation, a paid Render plan or an internal Docker host is recommended.
+diff --git a/VALIDATION_REPORT.md b/VALIDATION_REPORT.md
+index 275749f..7b65efb 100644
+--- a/VALIDATION_REPORT.md
++++ b/VALIDATION_REPORT.md
+@@ -1,41 +1,133 @@
+-# Test Orbit Designer V1.0.0 — Validation Report
++# Test Orbit Designer V1.1.0 — Validation Report
+ 
+-## Scope
++## Result
+ 
+-This validation covers the renamed application, the new default Walker configuration, the global initial camera behavior, and the existing Render server/Cesium functionality.
++**PASS** for source/API/UI regression validation and production-entrypoint smoke testing.
+ 
+-## Default scenario
++## Automated tests
++
++```text
++62 tests collected
++61 passed
++1 skipped (conditional SGP4 reference-vector test)
++```
++
++The skipped test requires the external `sgp4` runtime. The package remains declared in `pyproject.toml`; normal `uv sync` / Render Docker builds install it when package access is available.
++
++## Static checks
++
++| Check | Result |
++|---|---|
++| Python `compileall` | PASS |
++| Cesium frontend JavaScript `node --check` | PASS |
++| FastAPI API regression | PASS |
++| Render Blueprint contract | PASS |
++| Wheel build | PASS |
++| Production `app.server` HTTP smoke | PASS |
++
++## V1.1 orbital geometry validation
++
++Default Walker case:
+ 
+ ```text
+ Altitude             1280 km
+-Inclination          42 deg
+-Planes               8
+-Satellites / plane   16
+-Total satellites     128
+-Walker phasing F     1
++Inclination            42 deg
++Planes                  8
++Satellites / plane      16
++Total satellites       128
++Minimum elevation       20 deg
+ ```
+ 
+-## Regression tests
++Selected `P01-S01` geometry:
+ 
+ ```text
+-53 passed
+-1 skipped
++Footprint central angle     18.49798 deg
++Footprint surface radius     2059.19 km
++Ground-track samples              181
++Ground-track dateline segments      3
+ ```
+ 
+-The skipped test is the conditional SGP4 reference-vector test because the isolated validation runtime does not contain the external `sgp4` package.
++The footprint uses the spherical visibility relation
+ 
+-## Identity consistency
++```text
++psi = acos((R_E / (R_E + h)) cos(E)) - E
++```
+ 
+-The user-facing and API identity is unified as **Test Orbit Designer V1.0.0** in the HTML title/header, FastAPI metadata, `/health`, CLI version output, and Python package version.
++with negative minimum elevation clamped to the geometric horizon (`E = 0 deg`) for direct LOS footprint calculations.
+ 
+-## Initial camera behavior
++## V1.1 Multi-shell validation
+ 
+-The initial Cesium camera remains at the global view (`100 E, 20 N, 30,000 km`). Applying or clearing a service area does not automatically zoom the camera. The `Service area` button remains available for manual zoom.
++Default V1.1 example:
+ 
+-## Packaging
++```text
++SH1: 1280 km / 42 deg / 8 x 16  = 128 satellites
++SH2:  600 km / 70 deg / 6 x 12  =  72 satellites
++Total                              200 satellites
++Orbit paths                         14
++```
++
++Validated:
++
++- combined satellite ECI/ECEF state
++- shell-prefixed satellite IDs
++- combined service visibility
++- combined Coverage/Heat Map input geometry
++- selected multi-shell Ground Track/Footprint
++- intra-shell Walker ISL generation
++- server total-satellite workload limits
++
++V1.1 does **not** yet generate cross-shell ISL links.
+ 
+-The wheel build passes with build isolation disabled in this network-restricted validation environment:
++## Production server smoke
++
++Production-equivalent launch:
+ 
+ ```text
+-dist/k_leo_orbit_designer-1.0.0-py3-none-any.whl
++PORT=18083
++KLEO_SERVER_MODE=render
++WEB_CONCURRENCY=1
++python -m app.server
+ ```
++
++Verified HTTP responses:
++
++```text
++GET  /health                    200
++GET  /api/server-info           200
++POST /api/orbital-geometry      200
++POST /api/snapshot multi_shell  200
++```
++
++`/api/server-info` advertises:
++
++```text
++multi_shell_walker           true
++ground_track                 true
++minimum_elevation_footprint  true
++multi_shell_cross_isl        false
++```
++
++## Render Free-tier compatibility
++
++`render.yaml` uses Docker, Singapore region, `/health`, and commit auto-deploy. The unsupported Free-tier field `maxShutdownDelaySeconds` is intentionally absent.
++
++## Package
++
++Built artifact:
++
++```text
++dist/k_leo_orbit_designer-1.1.0-py3-none-any.whl
++```
++
++Wheel content was checked for:
++
++```text
++app/core/geometry.py
++app/core/multishell.py
++app/static/index.html
++app/server.py
++```
++
++## Environment limitation
++
++Docker Engine is not installed in this validation sandbox, so `docker build` itself was not executed. The same production entrypoint invoked by the Docker image (`app.server` / `kleo-server`) was launched and tested over HTTP.
+diff --git a/app/cli.py b/app/cli.py
+index de61bdf..33cf65a 100644
+--- a/app/cli.py
++++ b/app/cli.py
+@@ -6,7 +6,7 @@ import webbrowser
+ 
+ import uvicorn
+ 
+-APP_VERSION = "1.0.0"
++APP_VERSION = "1.1.0"
+ 
+ 
+ def _open_browser(url: str) -> None:
+diff --git a/app/main.py b/app/main.py
+index 474b682..bdd0328 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
+ from pydantic import BaseModel, Field
+ 
+ from .core.models import ConstellationConfig, GroundStation, LinkBudgetConfig, SimulationConfig
++from .core.geometry import walker_orbital_geometry
++from .core.multishell import multi_shell_snapshot, run_multi_shell_simulation, multi_shell_orbital_geometry, normalize_shell_id
+ from .core.optimizer import trade_study
+ from .core.simulation import run_simulation
+ from .core.snapshot import tle_snapshot, tle_station_timelines, walker_snapshot
+@@ -21,7 +23,7 @@ from .server_config import SETTINGS
+ 
+ BASE = Path(__file__).resolve().parent
+ APP_NAME = "Test Orbit Designer"
+-APP_VERSION = "1.0.0"
++APP_VERSION = "1.1.0"
+ app = FastAPI(
+     title=APP_NAME,
+     version=APP_VERSION,
+@@ -88,6 +90,33 @@ class SimIn(BaseModel):
+     ]
+ 
+ 
++
++
++class ShellIn(BaseModel):
++    id: str = "SH1"
++    name: str = "Shell 1"
++    altitude_km: float = Field(1280.0, ge=160.0, le=3000.0)
++    inclination_deg: float = Field(42.0, ge=0.0, le=180.0)
++    planes: int = Field(8, ge=1, le=128)
++    sats_per_plane: int = Field(16, ge=1, le=256)
++    phasing: int = 1
++    j2: bool = True
++
++
++class MultiShellSimIn(BaseModel):
++    shells: List[ShellIn] = [
++        ShellIn(id="SH1", name="Core 1280 km", altitude_km=1280, inclination_deg=42, planes=8, sats_per_plane=16, phasing=1),
++        ShellIn(id="SH2", name="High-inclination supplement", altitude_km=600, inclination_deg=70, planes=6, sats_per_plane=12, phasing=1),
++    ]
++    duration_min: float = Field(120.0, gt=0, le=1440)
++    step_sec: float = Field(60.0, gt=0, le=3600)
++    stations: List[StationIn] = [
++        StationIn(name="Seoul", lat_deg=37.5665, lon_deg=126.9780, min_elevation_deg=20),
++        StationIn(name="Dubai", lat_deg=25.2048, lon_deg=55.2708, min_elevation_deg=20),
++        StationIn(name="Singapore", lat_deg=1.3521, lon_deg=103.8198, min_elevation_deg=20),
++    ]
++
++
+ class TLESimIn(BaseModel):
+     tle_text: str = Field(min_length=1, max_length=SETTINGS.max_tle_chars)
+     start_utc: Optional[str] = None
+@@ -99,7 +128,7 @@ class TLESimIn(BaseModel):
+ 
+ 
+ class SnapshotIn(BaseModel):
+-    mode: Literal["walker", "tle"] = "walker"
++    mode: Literal["walker", "multi_shell", "tle"] = "walker"
+     time_sec: float = Field(0.0, ge=0.0, le=604800.0)
+     min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
+     heatmap: bool = True
+@@ -123,11 +152,31 @@ class SnapshotIn(BaseModel):
+     phasing: int = 1
+     j2: bool = True
+ 
++    # Multi-shell Walker fields
++    shells: List[ShellIn] = []
++
+     # TLE fields
+     tle_text: Optional[str] = Field(None, max_length=SETTINGS.max_tle_chars)
+     start_utc: Optional[str] = None
+ 
+ 
++class OrbitalGeometryIn(BaseModel):
++    mode: Literal["walker", "multi_shell"] = "walker"
++    satellite_id: str = Field(min_length=1, max_length=80)
++    time_sec: float = Field(0.0, ge=0.0, le=604800.0)
++    min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
++    ground_track_span_min: float = Field(220.0, ge=10.0, le=1440.0)
++    ground_track_samples: int = Field(181, ge=24, le=720)
++    footprint_samples: int = Field(72, ge=24, le=360)
++    altitude_km: float = 1280.0
++    inclination_deg: float = 42.0
++    planes: int = Field(8, ge=1, le=128)
++    sats_per_plane: int = Field(16, ge=1, le=256)
++    phasing: int = 1
++    j2: bool = True
++    shells: List[ShellIn] = []
++
++
+ class TLEParseIn(BaseModel):
+     tle_text: str = Field(min_length=1, max_length=SETTINGS.max_tle_chars)
+ 
+@@ -148,6 +197,44 @@ class TradeIn(BaseModel):
+     ]
+ 
+ 
++def shell_cfgs(items: List[ShellIn]):
++    if not items:
++        raise HTTPException(400, "Multi-shell mode requires at least one shell.")
++    result = []
++    total = 0
++    seen_ids = set()
++    for i, x in enumerate(items):
++        shell_id = normalize_shell_id(x.id, i)
++        if shell_id in seen_ids:
++            raise HTTPException(400, f"Duplicate shell id: {shell_id}.")
++        seen_ids.add(shell_id)
++        cfg = ConstellationConfig(x.altitude_km, x.inclination_deg, x.planes, x.sats_per_plane, x.phasing, x.j2)
++        total += cfg.total_satellites
++        result.append((shell_id, x.name or f"Shell {i+1}", cfg))
++    if total > SETTINGS.max_satellites:
++        raise HTTPException(413, f"Multi-shell constellation has {total} satellites; server limit is {SETTINGS.max_satellites}.")
++    return result
++
++
++def _enforce_multi_shell_limits(req, *, snapshot: bool = False) -> int:
++    shells = shell_cfgs(req.shells)
++    count = sum(x[2].total_satellites for x in shells)
++    stations = list(getattr(req, "stations", []) or [])
++    _enforce_station_count(stations)
++    if snapshot:
++        areas = list(getattr(req, "coverage_areas", []) or [])
++        if len(areas) > SETTINGS.max_coverage_areas:
++            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
++        hp = int(getattr(req, "heatmap_points", 0) or 0)
++        if hp > SETTINGS.max_heatmap_points:
++            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
++        if bool(getattr(req, "heatmap", False)):
++            work = count * hp * hp * max(1, len(areas))
++            if work > SETTINGS.max_snapshot_work:
++                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
++    return count
++
++
+ def station_objs(items):
+     return [GroundStation(x.name, x.lat_deg, x.lon_deg, x.min_elevation_deg) for x in items]
+ 
+@@ -272,6 +359,14 @@ def server_info():
+         "render_external_url": os.getenv("RENDER_EXTERNAL_URL"),
+         "git_branch": os.getenv("RENDER_GIT_BRANCH"),
+         "git_commit": os.getenv("RENDER_GIT_COMMIT"),
++        "capabilities": {
++            "walker": True,
++            "multi_shell_walker": True,
++            "ground_track": True,
++            "minimum_elevation_footprint": True,
++            "tle_sgp4": sgp4_available(),
++            "multi_shell_cross_isl": False,
++        },
+         "limits": {
+             "max_satellites": SETTINGS.max_satellites,
+             "max_tle_satellites": SETTINGS.max_tle_satellites,
+@@ -336,6 +431,10 @@ def preset():
+         "sats_per_plane": 16,
+         "phasing": 1,
+         "j2": True,
++        "multi_shells": [
++            {"id": "SH1", "name": "Core 1280 km", "altitude_km": 1280.0, "inclination_deg": 42.0, "planes": 8, "sats_per_plane": 16, "phasing": 1, "j2": True},
++            {"id": "SH2", "name": "High-inclination supplement", "altitude_km": 600.0, "inclination_deg": 70.0, "planes": 6, "sats_per_plane": 12, "phasing": 1, "j2": True},
++        ],
+         "stations": [
+             {"name": "Seoul", "lat_deg": 37.5665, "lon_deg": 126.9780, "min_elevation_deg": 20},
+             {"name": "Dubai", "lat_deg": 25.2048, "lon_deg": 55.2708, "min_elevation_deg": 20},
+@@ -353,6 +452,13 @@ def simulate(req: SimIn):
+     return run_simulation(sim)
+ 
+ 
++@app.post("/api/multi-shell/simulate")
++def simulate_multi_shell(req: MultiShellSimIn):
++    count = _enforce_multi_shell_limits(req)
++    _enforce_sim_limits(req, count)
++    return run_multi_shell_simulation(shell_cfgs(req.shells), station_objs(req.stations), req.duration_min, req.step_sec)
++
++
+ @app.post("/api/tle/simulate")
+ def simulate_tle(req: TLESimIn):
+     _enforce_station_count(req.stations)
+@@ -417,6 +523,15 @@ def snapshot(req: SnapshotIn):
+                 orbit_samples=req.orbit_samples,
+                 coverage_areas=[x.model_dump() for x in req.coverage_areas],
+             )
++        if req.mode == "multi_shell":
++            _enforce_multi_shell_limits(req, snapshot=True)
++            return multi_shell_snapshot(
++                shell_cfgs(req.shells), req.time_sec,
++                min_elevation_deg=req.min_elevation_deg, heatmap=req.heatmap, heatmap_points=req.heatmap_points,
++                stations=station_objs(req.stations), include_orbits=req.include_orbits, include_isl=req.include_isl,
++                include_access=req.include_access, orbit_samples=req.orbit_samples,
++                coverage_areas=[x.model_dump() for x in req.coverage_areas],
++            )
+         _enforce_walker_limits(req, snapshot=True)
+         c = constellation_from(req)
+         return walker_snapshot(
+@@ -436,6 +551,23 @@ def snapshot(req: SnapshotIn):
+         _tle_error(exc)
+ 
+ 
++@app.post("/api/orbital-geometry")
++def orbital_geometry(req: OrbitalGeometryIn):
++    try:
++        common = dict(
++            min_elevation_deg=req.min_elevation_deg,
++            ground_track_span_min=req.ground_track_span_min,
++            ground_track_samples=req.ground_track_samples,
++            footprint_samples=req.footprint_samples,
++        )
++        if req.mode == "multi_shell":
++            return multi_shell_orbital_geometry(shell_cfgs(req.shells), req.satellite_id, req.time_sec, **common)
++        _enforce_walker_limits(req)
++        return walker_orbital_geometry(constellation_from(req), req.satellite_id, req.time_sec, **common)
++    except ValueError as exc:
++        raise HTTPException(400, str(exc)) from exc
++
++
+ @app.post("/api/trade-study")
+ def trade(req: TradeIn):
+     _enforce_trade_limits(req)
+diff --git a/app/static/index.html b/app/static/index.html
+index 93be670..ba022c6 100644
+--- a/app/static/index.html
++++ b/app/static/index.html
+@@ -3,12 +3,12 @@
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+-<title>Test Orbit Designer V1.0.0</title>
++<title>Test Orbit Designer V1.1.0</title>
+ <link rel="icon" href="data:,">
+ <style>
+ :root{color-scheme:dark;--bg:#07111f;--panel:#0d1b2c;--panel2:#10243a;--line:#243e59;--text:#eef5ff;--muted:#9fb2c9;--accent:#62b8ff;--good:#64d6a2;--warn:#ffd479;--bad:#ff8a8a}
+ *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px}.shell{display:grid;grid-template-columns:300px minmax(480px,1fr) 350px;min-height:100vh}.sidebar,.detail{background:var(--panel);padding:16px;overflow:auto}.sidebar{border-right:1px solid var(--line)}.detail{border-left:1px solid var(--line)}.main{min-width:0;display:flex;flex-direction:column;background:#030911}.brand{font-size:18px;font-weight:800;letter-spacing:.2px}.version{color:var(--muted);font-size:12px;margin-top:4px}.section{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}.section h3{font-size:12px;text-transform:uppercase;letter-spacing:.11em;color:#b9cce0;margin:0 0 10px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field{margin:8px 0}.field label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}.field input,.field select,.field textarea,button{font:inherit}.field input,.field select,.field textarea{width:100%;border:1px solid #35506d;background:#081725;color:var(--text);border-radius:7px;padding:8px}.field textarea{height:110px;resize:vertical;font-family:Consolas,monospace;font-size:11px}.check{display:flex;align-items:center;gap:8px;margin:8px 0;color:#dbe8f5}.check input{accent-color:var(--accent)}input[type=range]{padding:0}.range-line{display:flex;align-items:center;gap:8px}.range-line input{flex:1}.range-value{min-width:48px;text-align:right;color:#d9edff;font-variant-numeric:tabular-nums}.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}button{border:1px solid #365778;background:#123151;color:#eaf5ff;border-radius:7px;padding:8px 11px;cursor:pointer}button.primary{background:#1567a8;border-color:#2b87ce;font-weight:700}button:disabled{opacity:.45;cursor:not-allowed}button:hover:not(:disabled){filter:brightness(1.1)}.status{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.4}.status.good{color:var(--good)}.status.warn{color:var(--warn)}.status.bad{color:var(--bad)}
+-.viewer-wrap{position:relative;min-height:610px;flex:1}.cesium-host{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,#10233c 0,#030911 70%)}.viewer-error{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;color:#ffd6d6;background:#080f18}.overlay-tools{position:absolute;left:12px;top:12px;display:flex;gap:7px;flex-wrap:wrap;z-index:5}.overlay-tools button{background:rgba(7,20,34,.88);backdrop-filter:blur(5px)}.legend{position:absolute;left:12px;bottom:12px;z-index:5;background:rgba(7,20,34,.88);padding:9px 11px;border:1px solid rgba(120,160,200,.3);border-radius:8px;color:#d9e9f7;font-size:11px;max-width:300px;backdrop-filter:blur(5px)}.legend-bar{height:8px;margin:6px 0;background:linear-gradient(90deg,rgba(0,60,170,.1),#00a8e8,#3ee07d,#ffe266,#ff7b35,#ef3340);border-radius:8px}.timeline{padding:10px 14px;background:#091625;border-top:1px solid var(--line);display:grid;grid-template-columns:auto auto minmax(180px,1fr) auto;gap:10px;align-items:center}.timeline input[type=range]{width:100%}.time-label{font-variant-numeric:tabular-nums;color:#dff0ff;min-width:110px}.lower{display:grid;grid-template-columns:1.1fr .9fr;gap:12px;padding:12px;background:#06101c}.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px;min-width:0}.card h3{font-size:13px;margin:0 0 10px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.kpi{background:#0a1a2a;border:1px solid #1f3c58;border-radius:7px;padding:9px}.kpi small{color:var(--muted);display:block}.kpi b{font-size:17px;display:block;margin-top:4px}.chart{height:230px}.table-wrap{overflow:auto;max-height:280px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #243b52;padding:7px;text-align:left;white-space:nowrap}th{color:#b9cbe0;position:sticky;top:0;background:var(--panel)}.sat-title{font-size:18px;font-weight:800}.sat-source{color:var(--muted);font-size:12px;margin:4px 0 13px}.props{display:grid;grid-template-columns:1fr 1fr;gap:1px 10px}.prop{border-bottom:1px solid #1d344a;padding:7px 0}.prop span{display:block;color:var(--muted);font-size:11px}.prop b{display:block;margin-top:2px;font-size:12px}.empty-details{color:var(--muted);line-height:1.55}.layer-stat{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:12px;margin:7px 0;color:#bdd0e2}.layer-stat b{color:#eef7ff}.note{font-size:11px;line-height:1.45;color:#8fa6bc;margin-top:8px}.tle-only{display:none}.cesium-widget-credits{font-size:9px!important}.cesium-viewer-bottom{bottom:2px!important}
++.viewer-wrap{position:relative;min-height:610px;flex:1}.cesium-host{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,#10233c 0,#030911 70%)}.viewer-error{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;color:#ffd6d6;background:#080f18}.overlay-tools{position:absolute;left:12px;top:12px;display:flex;gap:7px;flex-wrap:wrap;z-index:5}.overlay-tools button{background:rgba(7,20,34,.88);backdrop-filter:blur(5px)}.legend{position:absolute;left:12px;bottom:12px;z-index:5;background:rgba(7,20,34,.88);padding:9px 11px;border:1px solid rgba(120,160,200,.3);border-radius:8px;color:#d9e9f7;font-size:11px;max-width:300px;backdrop-filter:blur(5px)}.legend-bar{height:8px;margin:6px 0;background:linear-gradient(90deg,rgba(0,60,170,.1),#00a8e8,#3ee07d,#ffe266,#ff7b35,#ef3340);border-radius:8px}.timeline{padding:10px 14px;background:#091625;border-top:1px solid var(--line);display:grid;grid-template-columns:auto auto minmax(180px,1fr) auto;gap:10px;align-items:center}.timeline input[type=range]{width:100%}.time-label{font-variant-numeric:tabular-nums;color:#dff0ff;min-width:110px}.lower{display:grid;grid-template-columns:1.1fr .9fr;gap:12px;padding:12px;background:#06101c}.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px;min-width:0}.card h3{font-size:13px;margin:0 0 10px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.kpi{background:#0a1a2a;border:1px solid #1f3c58;border-radius:7px;padding:9px}.kpi small{color:var(--muted);display:block}.kpi b{font-size:17px;display:block;margin-top:4px}.chart{height:230px}.table-wrap{overflow:auto;max-height:280px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #243b52;padding:7px;text-align:left;white-space:nowrap}th{color:#b9cbe0;position:sticky;top:0;background:var(--panel)}.sat-title{font-size:18px;font-weight:800}.sat-source{color:var(--muted);font-size:12px;margin:4px 0 13px}.props{display:grid;grid-template-columns:1fr 1fr;gap:1px 10px}.prop{border-bottom:1px solid #1d344a;padding:7px 0}.prop span{display:block;color:var(--muted);font-size:11px}.prop b{display:block;margin-top:2px;font-size:12px}.empty-details{color:var(--muted);line-height:1.55}.layer-stat{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:12px;margin:7px 0;color:#bdd0e2}.layer-stat b{color:#eef7ff}.note{font-size:11px;line-height:1.45;color:#8fa6bc;margin-top:8px}.tle-only,.multi-only{display:none}.shell-list{display:grid;gap:8px}.shell-card{border:1px solid #2c4b67;background:#091827;border-radius:8px;padding:9px}.shell-card-head{display:flex;align-items:center;gap:7px}.shell-card-head input{flex:1}.shell-card-head button{padding:5px 8px}.shell-card .row{margin-top:3px}.shell-total{font-size:11px;color:#8fa6bc;text-align:right}.geometry-stat{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:12px;margin-top:6px}.cesium-widget-credits{font-size:9px!important}.cesium-viewer-bottom{bottom:2px!important}
+ .preset-row{display:flex;gap:6px;flex-wrap:wrap}.preset-row button{padding:6px 8px;font-size:11px}.preset-row button.active{background:#1c6095;border-color:#62b8ff}.country-list{max-height:220px;overflow:auto;border:1px solid #2a4763;border-radius:7px;background:#081725;padding:6px}.country-group{padding:5px 2px 2px;color:#8fa8c0;font-size:10px;text-transform:uppercase;letter-spacing:.08em}.country-item{display:flex;align-items:center;gap:7px;padding:5px 4px;border-radius:5px}.country-item:hover{background:#102a42}.country-item input{accent-color:var(--accent)}.country-item span{min-width:0}.country-item small{color:#7f99b3;margin-left:auto}.service-summary{margin-top:8px;padding:8px;border:1px solid #24445f;border-radius:7px;background:#091a2a;font-size:11px;line-height:1.5}.service-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.service-chip{padding:3px 6px;border-radius:10px;background:#143454;color:#d9ecff;border:1px solid #2e5f88}.boundary-badge{display:inline-block;padding:2px 5px;border-radius:8px;background:#18344c;color:#bcd8ee;margin-left:4px;font-size:10px}
+ @media(max-width:1100px){.shell{grid-template-columns:270px minmax(420px,1fr)}.detail{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:18px}.lower{grid-template-columns:1fr}}@media(max-width:760px){.shell{display:block}.sidebar,.detail{border:0;border-bottom:1px solid var(--line)}.viewer-wrap{min-height:500px}.timeline{grid-template-columns:auto 1fr}.timeline .time-label,.timeline select{grid-row:2}.lower{padding:8px}.kpis{grid-template-columns:1fr 1fr}.detail{display:block}.row{grid-template-columns:1fr}}
+ </style>
+@@ -17,15 +17,20 @@
+ <body>
+ <div class="shell">
+ <aside class="sidebar">
+-  <div class="brand">Test Orbit Designer</div><div class="version">V1.0.0 · Render-ready stateless web app</div>
++  <div class="brand">Test Orbit Designer</div><div class="version">V1.1.0 · Orbital Analysis · Render-ready</div>
+   <div class="section">
+     <h3>Constellation</h3>
+-    <div class="field"><label for="mode">Propagation mode</label><select id="mode"><option value="walker">Walker-Delta</option><option value="tle">TLE / SGP4</option></select></div>
++    <div class="field"><label for="mode">Propagation mode</label><select id="mode"><option value="walker">Walker-Delta</option><option value="multi_shell">Multi-shell Walker</option><option value="tle">TLE / SGP4</option></select></div>
+     <div id="walkerFields">
+       <div class="row"><div class="field"><label>Altitude km</label><input id="alt" type="number" value="1280" min="160" max="3000"></div><div class="field"><label>Inclination °</label><input id="inc" type="number" value="42" step="0.1"></div></div>
+       <div class="row"><div class="field"><label>Planes</label><input id="planes" type="number" value="8" min="1" max="128"></div><div class="field"><label>Sats / plane</label><input id="spp" type="number" value="16" min="1" max="256"></div></div>
+       <div class="row"><div class="field"><label>Walker phasing F</label><input id="phase" type="number" value="1"></div><div class="field"><label>J2 RAAN drift</label><select id="j2"><option value="true">On</option><option value="false">Off</option></select></div></div>
+     </div>
++    <div id="multiShellFields" class="multi-only">
++      <div id="shellList" class="shell-list"></div>
++      <div class="btns"><button id="addShellBtn" type="button">+ Add shell</button></div>
++      <div id="shellSummary" class="note">Multi-shell total: 0 satellites</div>
++    </div>
+     <div id="tleFields" class="tle-only">
+       <div class="field"><label for="tleText">TLE set</label><textarea id="tleText"></textarea></div>
+       <div class="field"><label>Start UTC (blank = latest TLE epoch)</label><input id="startUtc" placeholder="2026-08-19T00:00:00Z"></div>
+@@ -50,6 +55,9 @@
+     <label class="check"><input id="islOn" type="checkbox" checked> ISL lines</label>
+     <label class="check"><input id="accessOn" type="checkbox" checked> Access lines</label>
+     <label class="check"><input id="coverageOn" type="checkbox" checked> Coverage surface overlay</label>
++    <label class="check"><input id="groundTrackOn" type="checkbox" checked> Selected ground track</label>
++    <label class="check"><input id="footprintOn" type="checkbox" checked> Selected footprint</label>
++    <div class="field"><label>Ground track span</label><div class="range-line"><input id="trackSpan" type="range" min="30" max="720" step="10" value="220"><span id="trackSpanValue" class="range-value">220 min</span></div></div>
+     <div class="field"><label>Coverage opacity</label><div class="range-line"><input id="coverageOpacity" type="range" min="0.05" max="0.9" step="0.05" value="0.55"><span id="coverageOpacityValue" class="range-value">0.55</span></div></div>
+   </div>
+ </aside>
+@@ -74,7 +82,7 @@
+     <div id="serviceSummary" class="service-summary">Default: K-LEO Core (Korea + UAE + Singapore)</div>
+   </div>
+   <div class="section"><h3>Selected satellite</h3><div id="satDetails" class="empty-details">3D 지구에서 위성을 클릭하면 현재 시각의 위치·궤도 속성이 표시됩니다.</div></div>
+-  <div class="section"><h3>Live layers</h3><div class="layer-stat"><span>Orbit paths</span><b id="statOrbit">0</b></div><div class="layer-stat"><span>Active ISL</span><b id="statIsl">0</b></div><div class="layer-stat"><span>Access links</span><b id="statAccess">0</b></div><div class="layer-stat"><span>Coverage max visible</span><b id="statHeat">0</b></div><div class="note">Walker ISL은 동일 궤도면/인접 궤도면 후보 중 지구 차폐가 없는 링크입니다. TLE 모드 ISL은 시각화를 위한 근접 LOS 그래프입니다.</div></div>
++  <div class="section"><h3>Live layers</h3><div class="layer-stat"><span>Orbit paths</span><b id="statOrbit">0</b></div><div class="layer-stat"><span>Ground track</span><b id="statTrack">0</b></div><div class="layer-stat"><span>Footprint radius</span><b id="statFootprint">0 km</b></div><div class="layer-stat"><span>Active ISL</span><b id="statIsl">0</b></div><div class="layer-stat"><span>Access links</span><b id="statAccess">0</b></div><div class="layer-stat"><span>Coverage max visible</span><b id="statHeat">0</b></div><div class="note">Walker ISL은 동일 궤도면/인접 궤도면 후보 중 지구 차폐가 없는 링크입니다. TLE 모드 ISL은 시각화를 위한 근접 LOS 그래프입니다.</div></div>
+   <div class="section"><h3>Service selection</h3><div class="layer-stat"><span>Countries</span><b id="statCountries">0</b></div><div class="layer-stat"><span>Service points</span><b id="statStations">0</b></div><div class="layer-stat"><span>Coverage tiles</span><b id="statCoverageAreas">0</b></div><div id="boundarySourceNote" class="note">Boundary data not loaded.</div></div>
+   <div class="section"><h3>Earth sources</h3><div class="note"><b>Offline</b>: 프로젝트에 포함된 NASA Blue Marble 전지구 이미지.<br><b>Online</b>: ArcGIS World Imagery 스트리밍. 네트워크 실패 시 Offline으로 자동 복귀합니다.<br><br>CesiumJS 런타임은 로컬 vendor가 있으면 우선 사용하고, 없으면 공식 Cesium 1.144 CDN을 사용합니다.</div></div>
+ </aside>
+@@ -83,9 +91,18 @@
+ (function(){
+ 'use strict';
+ const $=id=>document.getElementById(id);const CVER='1.144';const CDN_BASE=`https://cesium.com/downloads/cesiumjs/releases/${CVER}/Build/Cesium/`;const LOCAL_BASE='/static/vendor/cesium/';
+-const OFFLINE_EARTH='/static/earth_blue_marble_2048.jpg';const SAT_MODELS={default:'/static/kleo_satellite.glb',compact:'/static/kleo_satellite_compact.glb',broadband:'/static/kleo_satellite_broadband.glb',flatpanel:'/static/kleo_satellite_flatpanel.glb'};const ARCGIS='https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
++const OFFLINE_EARTH='/static/earth_blue_marble_2048.jpg';const SAT_MODELS={default:'/static/kleo_satellite.glb',compact:'/static/kleo_satellite_compact.glb',broadband:'/static/kleo_satellite_broadband.glb',flatpanel:'/static/kleo_satellite_flatpanel.glb'};const SHELL_COLORS=['#5db8ff','#ff9f43','#a78bfa','#64d6a2','#ff6b8a','#ffd166'];function shellColor(id,alpha=1){if(!id)return Cesium.Color.WHITE.withAlpha(alpha);const m=String(id).match(/(\d+)/),i=m?Math.max(0,(+m[1]-1)%SHELL_COLORS.length):0;return Cesium.Color.fromCssColorString(SHELL_COLORS[i]).withAlpha(alpha)};const ARCGIS='https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
+ const verificationTLE=`VANGUARD 1\n1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n2 00005  34.2682 331.5174 1849677 331.7664  19.3264 10.82419157413667`;
+-const state={viewer:null,snapshot:null,selectedId:null,satEntities:new Map(),groundEntities:new Map(),orbitCollection:null,islCollection:null,accessCollection:null,coverageLayers:[],baseLayer:null,boundaryDataSource:null,boundaryData:null,boundaryFallback:null,boundaryFeatureMap:new Map(),boundarySource:null,serviceCatalog:null,serviceSelection:null,playing:false,timer:null,snapshotSeq:0,sliderDebounce:null,cesiumSource:null};
++const DEFAULT_SHELLS=[
++{id:'SH1',name:'Core 1280 km',altitude_km:1280,inclination_deg:42,planes:8,sats_per_plane:16,phasing:1,j2:true},
++{id:'SH2',name:'High-inclination supplement',altitude_km:600,inclination_deg:70,planes:6,sats_per_plane:12,phasing:1,j2:true}
++];
++function shellCardData(card){return{id:card.dataset.shellId,name:card.querySelector('.sh-name').value||card.dataset.shellId,altitude_km:+card.querySelector('.sh-alt').value,inclination_deg:+card.querySelector('.sh-inc').value,planes:+card.querySelector('.sh-planes').value,sats_per_plane:+card.querySelector('.sh-spp').value,phasing:+card.querySelector('.sh-phase').value,j2:card.querySelector('.sh-j2').value==='true'}}
++function shellPayloads(){return[...document.querySelectorAll('.shell-card')].map(shellCardData)}
++function updateShellSummary(){const shells=shellPayloads(),total=shells.reduce((a,x)=>a+x.planes*x.sats_per_plane,0);$('shellSummary').textContent=`${shells.length} shell(s) · ${total} satellites`;for(const c of document.querySelectorAll('.shell-card')){const d=shellCardData(c),e=c.querySelector('.shell-total');if(e)e.textContent=`${d.planes} × ${d.sats_per_plane} = ${d.planes*d.sats_per_plane} satellites`}}
++function addShell(shell={}){const idx=document.querySelectorAll('.shell-card').length+1,used=new Set([...document.querySelectorAll('.shell-card')].map(x=>x.dataset.shellId));let n=1;while(used.has(`SH${n}`))n++;const id=shell.id||`SH${n}`,card=document.createElement('div');card.className='shell-card';card.dataset.shellId=id;card.innerHTML=`<div class="shell-card-head"><input class="sh-name" value="${esc(shell.name||`Shell ${idx}`)}" aria-label="shell name"><button class="sh-remove" type="button">Remove</button></div><div class="row"><div class="field"><label>Altitude km</label><input class="sh-alt" type="number" min="160" max="3000" value="${shell.altitude_km??1280}"></div><div class="field"><label>Inclination °</label><input class="sh-inc" type="number" min="0" max="180" step="0.1" value="${shell.inclination_deg??42}"></div></div><div class="row"><div class="field"><label>Planes</label><input class="sh-planes" type="number" min="1" max="128" value="${shell.planes??8}"></div><div class="field"><label>Sats / plane</label><input class="sh-spp" type="number" min="1" max="256" value="${shell.sats_per_plane??16}"></div></div><div class="row"><div class="field"><label>Walker F</label><input class="sh-phase" type="number" value="${shell.phasing??1}"></div><div class="field"><label>J2 RAAN drift</label><select class="sh-j2"><option value="true" ${(shell.j2??true)?'selected':''}>On</option><option value="false" ${shell.j2===false?'selected':''}>Off</option></select></div></div><div class="shell-total"></div>`;card.querySelector('.sh-remove').addEventListener('click',()=>{card.remove();updateShellSummary()});for(const e of card.querySelectorAll('input,select'))e.addEventListener('change',updateShellSummary);$('shellList').appendChild(card);updateShellSummary()}
++function initShells(){if(!$('shellList').children.length)for(const sh of DEFAULT_SHELLS)addShell(sh)}
++const state={viewer:null,snapshot:null,selectedId:null,satEntities:new Map(),groundEntities:new Map(),orbitCollection:null,islCollection:null,accessCollection:null,groundTrackCollection:null,footprintEntity:null,geometrySeq:0,coverageLayers:[],baseLayer:null,boundaryDataSource:null,boundaryData:null,boundaryFallback:null,boundaryFeatureMap:new Map(),boundarySource:null,serviceCatalog:null,serviceSelection:null,playing:false,timer:null,snapshotSeq:0,sliderDebounce:null,cesiumSource:null};
+ function setStatus(t,kind=''){const e=$('status');e.textContent=t;e.className='status '+kind}function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function num(v,d=2,s=''){return v===null||v===undefined||!Number.isFinite(+v)?'–':(+v).toFixed(d)+s}function fmtTime(sec){sec=Math.max(0,Math.round(+sec||0));const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return `T+${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`}
+ function addCss(href,onFail){const l=document.createElement('link');l.rel='stylesheet';l.href=href;if(onFail)l.onerror=onFail;document.head.appendChild(l)}function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=()=>reject(new Error('Failed to load '+src));document.head.appendChild(s)})}
+ async function loadCesium(){addCss(LOCAL_BASE+'Widgets/widgets.css',()=>addCss(CDN_BASE+'Widgets/widgets.css'));try{window.CESIUM_BASE_URL=LOCAL_BASE;await loadScript(LOCAL_BASE+'Cesium.js');state.cesiumSource='local';return}catch(_){window.CESIUM_BASE_URL=CDN_BASE;await loadScript(CDN_BASE+'Cesium.js');state.cesiumSource='cdn'}}
+@@ -106,38 +123,43 @@ function flyServiceArea(){const b=state.serviceSelection?.camera_bounds;if(!b||!
+ async function applyServiceSelection(fly=true){stopPlayback();setStatus('Applying service countries / regions…');await resolveServiceSelection();await renderServiceBoundaries();if(fly)flyServiceArea();if(state.snapshot)await fetchSnapshot(+$('timeSlider').value,true);setStatus('Service area applied.','good')}
+ function mode(){return $('mode').value}function stations(){const src=state.serviceSelection?.stations||[{name:'Seoul',lat_deg:37.5665,lon_deg:126.978},{name:'Dubai',lat_deg:25.2048,lon_deg:55.2708},{name:'Singapore',lat_deg:1.3521,lon_deg:103.8198}];return src.map(x=>({name:x.name,lat_deg:+x.lat_deg,lon_deg:+x.lon_deg,min_elevation_deg:+$('minEl').value}))}function coverageAreas(){return(state.serviceSelection?.coverage_areas||[]).map(x=>({code:x.code,name:x.name,lon_min:+x.lon_min,lat_min:+x.lat_min,lon_max:+x.lon_max,lat_max:+x.lat_max}))}
+ function walkerPayload(){return{altitude_km:+$('alt').value,inclination_deg:+$('inc').value,planes:+$('planes').value,sats_per_plane:+$('spp').value,phasing:+$('phase').value,j2:$('j2').value==='true',duration_min:+$('dur').value,step_sec:+$('step').value,stations:stations()}}
+-function snapshotPayload(t){const base={mode:mode(),time_sec:+t,min_elevation_deg:+$('minEl').value,heatmap:$('coverageOn').checked,heatmap_points:+$('heatRes').value,include_orbits:$('orbitOn').checked,include_isl:$('islOn').checked,include_access:$('accessOn').checked,orbit_samples:96,coverage_areas:coverageAreas(),stations:stations()};if(mode()==='tle')return{...base,tle_text:$('tleText').value,start_utc:$('startUtc').value.trim()||null};const w=walkerPayload();return{...base,altitude_km:w.altitude_km,inclination_deg:w.inclination_deg,planes:w.planes,sats_per_plane:w.sats_per_plane,phasing:w.phasing,j2:w.j2}}
+-function setModeUI(){const tle=mode()==='tle';$('walkerFields').style.display=tle?'none':'block';$('tleFields').style.display=tle?'block':'none';$('tradeBtn').disabled=tle;stopPlayback();configureTimeSlider()}
++function multiShellPayload(){return{shells:shellPayloads(),duration_min:+$('dur').value,step_sec:+$('step').value,stations:stations()}}
++function snapshotPayload(t){const base={mode:mode(),time_sec:+t,min_elevation_deg:+$('minEl').value,heatmap:$('coverageOn').checked,heatmap_points:+$('heatRes').value,include_orbits:$('orbitOn').checked,include_isl:$('islOn').checked,include_access:$('accessOn').checked,orbit_samples:96,coverage_areas:coverageAreas(),stations:stations()};if(mode()==='tle')return{...base,tle_text:$('tleText').value,start_utc:$('startUtc').value.trim()||null};if(mode()==='multi_shell')return{...base,shells:shellPayloads()};const w=walkerPayload();return{...base,altitude_km:w.altitude_km,inclination_deg:w.inclination_deg,planes:w.planes,sats_per_plane:w.sats_per_plane,phasing:w.phasing,j2:w.j2}}
++function setModeUI(){const m=mode(),tle=m==='tle',multi=m==='multi_shell';$('walkerFields').style.display=m==='walker'?'block':'none';$('multiShellFields').style.display=multi?'block':'none';$('tleFields').style.display=tle?'block':'none';$('tradeBtn').disabled=m!=='walker';$('groundTrackOn').disabled=tle;$('footprintOn').disabled=tle;if(tle)clearSelectedGeometry();stopPlayback();configureTimeSlider()}
+ function ecefCart(xyz){return Cesium.Cartesian3.fromElements(xyz[0]*1000,xyz[1]*1000,xyz[2]*1000)}
+-async function initViewer(){const v=new Cesium.Viewer('cesiumContainer',{baseLayer:false,terrainProvider:new Cesium.EllipsoidTerrainProvider(),animation:false,timeline:false,geocoder:false,homeButton:false,sceneModePicker:false,baseLayerPicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,shouldAnimate:false});state.viewer=v;v.scene.globe.depthTestAgainstTerrain=false;v.scene.globe.enableLighting=false;v.scene.skyAtmosphere.show=true;v.scene.fog.enabled=true;v.scene.preRender.addEventListener(updatePointOcclusion);v.resolutionScale=Math.min(window.devicePixelRatio||1,1.5);const h=new Cesium.ScreenSpaceEventHandler(v.scene.canvas);h.setInputAction(m=>{const p=v.scene.pick(m.position);if(Cesium.defined(p)&&p.id&&p.id._kleoSatelliteId){state.selectedId=p.id._kleoSatelliteId;highlightSelection();renderSelected()}},Cesium.ScreenSpaceEventType.LEFT_CLICK);await applyEarthSource();applyEarthDisplay();flyGlobal(true)}
++async function initViewer(){const v=new Cesium.Viewer('cesiumContainer',{baseLayer:false,terrainProvider:new Cesium.EllipsoidTerrainProvider(),animation:false,timeline:false,geocoder:false,homeButton:false,sceneModePicker:false,baseLayerPicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,shouldAnimate:false});state.viewer=v;v.scene.globe.depthTestAgainstTerrain=false;v.scene.globe.enableLighting=false;v.scene.skyAtmosphere.show=true;v.scene.fog.enabled=true;v.scene.preRender.addEventListener(updatePointOcclusion);v.resolutionScale=Math.min(window.devicePixelRatio||1,1.5);const h=new Cesium.ScreenSpaceEventHandler(v.scene.canvas);h.setInputAction(m=>{const p=v.scene.pick(m.position);if(Cesium.defined(p)&&p.id&&p.id._kleoSatelliteId){state.selectedId=p.id._kleoSatelliteId;highlightSelection();renderSelected();fetchSelectedGeometry()}},Cesium.ScreenSpaceEventType.LEFT_CLICK);await applyEarthSource();applyEarthDisplay();flyGlobal(true)}
+ async function applyEarthSource(){if(!state.viewer)return;const layers=state.viewer.imageryLayers;if(state.baseLayer){layers.remove(state.baseLayer,false);state.baseLayer=null}try{let provider;if($('earthSource').value==='online'){provider=await Cesium.ArcGisMapServerImageryProvider.fromUrl(ARCGIS,{enablePickFeatures:false})}else{provider=await Cesium.SingleTileImageryProvider.fromUrl(OFFLINE_EARTH,{rectangle:Cesium.Rectangle.MAX_VALUE,credit:'NASA Blue Marble / K-LEO offline texture'})}state.baseLayer=layers.addImageryProvider(provider,0);setStatus(`Earth imagery: ${$('earthSource').value} · Cesium ${state.cesiumSource}.`,'good')}catch(e){if($('earthSource').value==='online'){$('earthSource').value='offline';setStatus('Online Earth unavailable; switched to offline Blue Marble.','warn');return applyEarthSource()}setStatus('Earth imagery error: '+e.message,'bad')}}
+ function applyEarthDisplay(){if(!state.viewer)return;const g=state.viewer.scene.globe;g.show=$('earthOn').checked;const a=+$('earthOpacity').value;g.translucency.enabled=a<0.999;g.translucency.frontFaceAlpha=a;g.translucency.backFaceAlpha=Math.min(a,.75);$('earthOpacityValue').textContent=a.toFixed(2)}
+ function satVisualSize(){return +$('satSize').value}function selectedSatModel(){return SAT_MODELS[$('satModel').value]||SAT_MODELS.default}
+ function isEarthOccluded(camera,sat){if(!$('earthOn').checked)return false;const rx=6378137.0,ry=6378137.0,rz=6356752.314245;const cx=camera.x/rx,cy=camera.y/ry,cz=camera.z/rz,sx=sat.x/rx,sy=sat.y/ry,sz=sat.z/rz,dx=sx-cx,dy=sy-cy,dz=sz-cz;const a=dx*dx+dy*dy+dz*dz,b=2*(cx*dx+cy*dy+cz*dz),c=cx*cx+cy*cy+cz*cz-1,disc=b*b-4*a*c;if(a<=0||disc<=0)return false;const q=Math.sqrt(disc),t1=(-b-q)/(2*a),t2=(-b+q)/(2*a),eps=1e-6;return(t1>eps&&t1<1-eps)||(t2>eps&&t2<1-eps)}
+ function updatePointOcclusion(){if(!state.viewer)return;const pointMode=$('satRender').value==='point',camera=state.viewer.camera.positionWC;for(const [id,e] of state.satEntities){if(pointMode){const occluded=e._kleoPosition&&isEarthOccluded(camera,e._kleoPosition);e.point.show=!occluded;e.label.show=!occluded&&id===state.selectedId}else{e.point.show=false;e.label.show=id===state.selectedId}}}
+ function updateSatelliteStyles(){const sz=satVisualSize(),model=$('satRender').value==='model',modelUri=selectedSatModel();$('satSizeValue').textContent=sz.toFixed(2)+'×';$('satModel').disabled=!model;for(const [id,e] of state.satEntities){e.model.show=model;e.model.uri=modelUri;e.point.disableDepthTestDistance=0;e.label.disableDepthTestDistance=0;e.model.minimumPixelSize=7*sz;e.point.pixelSize=4.5*sz;e.label.show=model&&id===state.selectedId}updatePointOcclusion()}
+-function reconcileSatellites(sats){const seen=new Set();for(const s of sats){if([s.ecef_x_km,s.ecef_y_km,s.ecef_z_km].some(v=>v===null||!Number.isFinite(+v)))continue;seen.add(s.id);const pos=Cesium.Cartesian3.fromElements(s.ecef_x_km*1000,s.ecef_y_km*1000,s.ecef_z_km*1000);let e=state.satEntities.get(s.id);if(!e){e=state.viewer.entities.add({position:pos,orientation:Cesium.Transforms.headingPitchRollQuaternion(pos,new Cesium.HeadingPitchRoll(0,0,0)),model:{uri:selectedSatModel(),minimumPixelSize:14,maximumScale:2500000,scale:1,color:Cesium.Color.WHITE,silhouetteColor:Cesium.Color.YELLOW,silhouetteSize:0},point:{pixelSize:9,color:Cesium.Color.CYAN,show:false,disableDepthTestDistance:0},label:{text:s.name,font:'12px Segoe UI',fillColor:Cesium.Color.WHITE,showBackground:true,backgroundColor:Cesium.Color.fromCssColorString('#07111fcc'),pixelOffset:new Cesium.Cartesian2(0,-22),show:false,disableDepthTestDistance:0}});e._kleoSatelliteId=s.id;e._kleoPosition=pos;state.satEntities.set(s.id,e)}else{e.position=pos;e._kleoPosition=pos;e.orientation=Cesium.Transforms.headingPitchRollQuaternion(pos,new Cesium.HeadingPitchRoll(0,0,0));e.label.text=s.name}}for(const [id,e] of [...state.satEntities])if(!seen.has(id)){state.viewer.entities.remove(e);state.satEntities.delete(id)}updateSatelliteStyles();highlightSelection()}
+-function highlightSelection(){for(const [id,e] of state.satEntities){const sel=id===state.selectedId;e.model.silhouetteSize=sel?2.5:0;e.model.color=sel?Cesium.Color.fromCssColorString('#ffe26a'):Cesium.Color.WHITE;e.point.color=sel?Cesium.Color.YELLOW:Cesium.Color.CYAN}updatePointOcclusion()}
++function reconcileSatellites(sats){const seen=new Set();for(const s of sats){if([s.ecef_x_km,s.ecef_y_km,s.ecef_z_km].some(v=>v===null||!Number.isFinite(+v)))continue;seen.add(s.id);const pos=Cesium.Cartesian3.fromElements(s.ecef_x_km*1000,s.ecef_y_km*1000,s.ecef_z_km*1000),base=s.shell_id?shellColor(s.shell_id):Cesium.Color.WHITE,pointBase=s.shell_id?shellColor(s.shell_id):Cesium.Color.CYAN;let e=state.satEntities.get(s.id);if(!e){e=state.viewer.entities.add({position:pos,orientation:Cesium.Transforms.headingPitchRollQuaternion(pos,new Cesium.HeadingPitchRoll(0,0,0)),model:{uri:selectedSatModel(),minimumPixelSize:14,maximumScale:2500000,scale:1,color:base,silhouetteColor:Cesium.Color.YELLOW,silhouetteSize:0},point:{pixelSize:9,color:pointBase,show:false,disableDepthTestDistance:0},label:{text:s.name,font:'12px Segoe UI',fillColor:Cesium.Color.WHITE,showBackground:true,backgroundColor:Cesium.Color.fromCssColorString('#07111fcc'),pixelOffset:new Cesium.Cartesian2(0,-22),show:false,disableDepthTestDistance:0}});e._kleoSatelliteId=s.id;e._kleoPosition=pos;state.satEntities.set(s.id,e)}else{e.position=pos;e._kleoPosition=pos;e.orientation=Cesium.Transforms.headingPitchRollQuaternion(pos,new Cesium.HeadingPitchRoll(0,0,0));e.label.text=s.name}e._kleoBaseColor=base;e._kleoPointColor=pointBase}for(const [id,e] of [...state.satEntities])if(!seen.has(id)){state.viewer.entities.remove(e);state.satEntities.delete(id)}updateSatelliteStyles();highlightSelection()}
++function highlightSelection(){for(const [id,e] of state.satEntities){const sel=id===state.selectedId;e.model.silhouetteSize=sel?2.5:0;e.model.color=sel?Cesium.Color.fromCssColorString('#ffe26a'):(e._kleoBaseColor||Cesium.Color.WHITE);e.point.color=sel?Cesium.Color.YELLOW:(e._kleoPointColor||Cesium.Color.CYAN)}updatePointOcclusion()}
+ function clearPrimitive(name){if(state[name]){state.viewer.scene.primitives.remove(state[name]);state[name]=null}}
+-function renderOrbits(viz){clearPrimitive('orbitCollection');const paths=viz?.orbits||[];$('statOrbit').textContent=paths.length;if(!$('orbitOn').checked||!paths.length)return;const c=new Cesium.PolylineCollection();for(const p of paths)c.add({positions:p.ecef_km.map(ecefCart),width:1.25,material:Cesium.Material.fromType('Color',{color:Cesium.Color.fromCssColorString('#5d83a7').withAlpha(.62)})});state.orbitCollection=state.viewer.scene.primitives.add(c)}
+-function renderIsl(viz){clearPrimitive('islCollection');const links=viz?.isl_links||[];$('statIsl').textContent=links.length;if(!$('islOn').checked||!links.length)return;const c=new Cesium.PolylineCollection();for(const l of links)c.add({positions:[ecefCart(l.a_ecef_km),ecefCart(l.b_ecef_km)],width:1.1,material:Cesium.Material.fromType('Color',{color:Cesium.Color.fromCssColorString('#b88cff').withAlpha(.62)})});state.islCollection=state.viewer.scene.primitives.add(c)}
++function renderOrbits(viz){clearPrimitive('orbitCollection');const paths=viz?.orbits||[];$('statOrbit').textContent=paths.length;if(!$('orbitOn').checked||!paths.length)return;const c=new Cesium.PolylineCollection();for(const p of paths)c.add({positions:p.ecef_km.map(ecefCart),width:1.25,material:Cesium.Material.fromType('Color',{color:p.shell_id?shellColor(p.shell_id,.7):Cesium.Color.fromCssColorString('#5d83a7').withAlpha(.62)})});state.orbitCollection=state.viewer.scene.primitives.add(c)}
++function renderIsl(viz){clearPrimitive('islCollection');const links=viz?.isl_links||[];$('statIsl').textContent=links.length;if(!$('islOn').checked||!links.length)return;const c=new Cesium.PolylineCollection();for(const l of links)c.add({positions:[ecefCart(l.a_ecef_km),ecefCart(l.b_ecef_km)],width:1.1,material:Cesium.Material.fromType('Color',{color:l.shell_id?shellColor(l.shell_id,.58):Cesium.Color.fromCssColorString('#b88cff').withAlpha(.62)})});state.islCollection=state.viewer.scene.primitives.add(c)}
+ function reconcileGroundStations(viz){const links=viz?.access_links||[],seen=new Set();for(const l of links){seen.add(l.station);if(state.groundEntities.has(l.station))continue;const p=Cesium.Cartesian3.fromDegrees(l.station_lon_deg,l.station_lat_deg,0);const e=state.viewer.entities.add({position:p,point:{pixelSize:8,color:Cesium.Color.LIME,disableDepthTestDistance:Number.POSITIVE_INFINITY},label:{text:l.station,font:'11px Segoe UI',pixelOffset:new Cesium.Cartesian2(0,-16),fillColor:Cesium.Color.WHITE,showBackground:true,backgroundColor:Cesium.Color.fromCssColorString('#07111fcc'),disableDepthTestDistance:Number.POSITIVE_INFINITY}});state.groundEntities.set(l.station,e)}for(const [name,e] of [...state.groundEntities])if(!seen.has(name)){state.viewer.entities.remove(e);state.groundEntities.delete(name)}}
+ function renderAccess(viz){clearPrimitive('accessCollection');const links=(viz?.access_links||[]).filter(x=>x.visible);$('statAccess').textContent=links.length;reconcileGroundStations(viz);if(!$('accessOn').checked||!links.length)return;const c=new Cesium.PolylineCollection();for(const l of links)c.add({positions:[ecefCart(l.station_ecef_km),ecefCart(l.satellite_ecef_km)],width:2,material:Cesium.Material.fromType('Color',{color:Cesium.Color.fromCssColorString('#60e8a3').withAlpha(.9)})});state.accessCollection=state.viewer.scene.primitives.add(c)}
+ function heatColor(v,max){if(max<=0)return[0,90,180,0];const t=Math.max(0,Math.min(1,v/max));const stops=[[0,60,170],[0,168,232],[62,224,125],[255,226,102],[255,123,53],[239,51,64]];const x=t*(stops.length-1),i=Math.min(stops.length-2,Math.floor(x)),f=x-i;return stops[i].map((a,k)=>Math.round(a+(stops[i+1][k]-a)*f)).concat([v===0?35:220])}
+ async function renderCoverage(heatmaps){for(const layer of state.coverageLayers)state.viewer.imageryLayers.remove(layer,false);state.coverageLayers=[];const list=Array.isArray(heatmaps)?heatmaps:(heatmaps?[heatmaps]:[]),visible=$('coverageOn').checked&&list.some(h=>h?.visible_counts?.length);$('heatmap').style.display=visible?'block':'none';const globalMax=Math.max(0,...list.map(h=>h?.max_visible||0));$('statHeat').textContent=globalMax;if(!visible)return;for(const hm of list){if(!hm?.visible_counts?.length)continue;const rows=hm.visible_counts,h=rows.length,w=rows[0].length,canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d'),img=ctx.createImageData(w,h),feature=state.boundaryFeatureMap.get(String(hm.area_code||'').toUpperCase());for(let y=0;y<h;y++){const src=h-1-y,lat=hm.lat_deg[src];for(let x=0;x<w;x++){const lon=hm.lon_deg[x],inside=!feature||pointInGeometry(lon,lat,feature.geometry),c=heatColor(rows[src][x],globalMax),o=(y*w+x)*4;img.data[o]=c[0];img.data[o+1]=c[1];img.data[o+2]=c[2];img.data[o+3]=inside?c[3]:0}}ctx.putImageData(img,0,0);const rect=Cesium.Rectangle.fromDegrees(hm.lon_deg[0],hm.lat_deg[0],hm.lon_deg[hm.lon_deg.length-1],hm.lat_deg[hm.lat_deg.length-1]);const provider=await Cesium.SingleTileImageryProvider.fromUrl(canvas.toDataURL('image/png'),{rectangle:rect,credit:`K-LEO coverage · ${hm.area_name||hm.area_code||'service area'}`});const layer=state.viewer.imageryLayers.addImageryProvider(provider);layer.alpha=+$('coverageOpacity').value;state.coverageLayers.push(layer)}$('coverageLegend').textContent=`Visible satellites · 0 → ${globalMax} · ${list.length} service area(s) · min elevation ${list[0]?.min_elevation_deg??$('minEl').value}°`}
+-function prop(k,v){return `<div class="prop"><span>${esc(k)}</span><b>${esc(v)}</b></div>`}function renderSelected(){const s=state.snapshot?.satellites?.find(x=>x.id===state.selectedId);if(!s){$('satDetails').className='empty-details';$('satDetails').innerHTML='3D 지구에서 위성을 클릭하면 현재 시각의 위치·궤도 속성이 표시됩니다.';return}$('satDetails').className='';let h=`<div class="sat-title">${esc(s.name)}</div><div class="sat-source">${esc(s.source)} · ${esc(s.id)}</div><div class="props">`;h+=prop('Latitude',num(s.lat_deg,4,'°'))+prop('Longitude',num(s.lon_deg,4,'°'))+prop('Altitude',num(s.altitude_km,2,' km'))+prop('Speed',num(s.speed_km_s,3,' km/s'))+prop('Inclination',num(s.inclination_deg,4,'°'))+prop('RAAN',num(s.raan_deg,4,'°'))+prop('Period',num(s.period_min,3,' min'));if(s.source==='Walker')h+=prop('Plane / slot',`${s.plane} / ${s.slot}`)+prop('Argument latitude',num(s.argument_latitude_deg,4,'°'));else h+=prop('NORAD ID',s.norad_id)+prop('TLE epoch',s.epoch_utc||'–')+prop('Eccentricity',num(s.eccentricity,7))+prop('Arg. perigee',num(s.arg_perigee_deg,4,'°'))+prop('Mean motion',num(s.mean_motion_rev_day,6,' rev/day'));h+=prop('ECEF X/Y/Z',`${num(s.ecef_x_km,1)} / ${num(s.ecef_y_km,1)} / ${num(s.ecef_z_km,1)} km`)+'</div>';$('satDetails').innerHTML=h}
+-async function renderSnapshot(snap){state.snapshot=snap;if(state.selectedId&&!snap.satellites.some(s=>s.id===state.selectedId))state.selectedId=null;reconcileSatellites(snap.satellites);const viz=snap.visualization||{};renderOrbits(viz);renderIsl(viz);renderAccess(viz);await renderCoverage(snap.heatmaps||snap.heatmap);renderSelected();$('timeLabel').textContent=fmtTime(snap.time_sec);$('timeSlider').value=String(Math.min(+$('timeSlider').max,snap.time_sec));if(snap.errors?.length)setStatus(`Snapshot completed with ${snap.errors.length} SGP4 warning(s).`,'warn')}
++function prop(k,v){return `<div class="prop"><span>${esc(k)}</span><b>${esc(v)}</b></div>`}function renderSelected(){const s=state.snapshot?.satellites?.find(x=>x.id===state.selectedId);if(!s){$('satDetails').className='empty-details';$('satDetails').innerHTML='3D 지구에서 위성을 클릭하면 현재 시각의 위치·궤도 속성이 표시됩니다.';return}$('satDetails').className='';let h=`<div class="sat-title">${esc(s.name)}</div><div class="sat-source">${esc(s.source)} · ${esc(s.id)}</div><div class="props">`;h+=prop('Latitude',num(s.lat_deg,4,'°'))+prop('Longitude',num(s.lon_deg,4,'°'))+prop('Altitude',num(s.altitude_km,2,' km'))+prop('Speed',num(s.speed_km_s,3,' km/s'))+prop('Inclination',num(s.inclination_deg,4,'°'))+prop('RAAN',num(s.raan_deg,4,'°'))+prop('Period',num(s.period_min,3,' min'));if(s.source==='Walker'||s.source==='Multi-shell Walker'){if(s.shell_id)h+=prop('Shell',`${s.shell_id} · ${s.shell_name||''}`);h+=prop('Plane / slot',`${s.plane} / ${s.slot}`)+prop('Argument latitude',num(s.argument_latitude_deg,4,'°'))}else h+=prop('NORAD ID',s.norad_id)+prop('TLE epoch',s.epoch_utc||'–')+prop('Eccentricity',num(s.eccentricity,7))+prop('Arg. perigee',num(s.arg_perigee_deg,4,'°'))+prop('Mean motion',num(s.mean_motion_rev_day,6,' rev/day'));h+=prop('ECEF X/Y/Z',`${num(s.ecef_x_km,1)} / ${num(s.ecef_y_km,1)} / ${num(s.ecef_z_km,1)} km`)+'</div>';$('satDetails').innerHTML=h}
++function clearSelectedGeometry(){if(state.groundTrackCollection){state.viewer?.scene.primitives.remove(state.groundTrackCollection);state.groundTrackCollection=null}if(state.footprintEntity){state.viewer?.entities.remove(state.footprintEntity);state.footprintEntity=null}$('statTrack').textContent='0';$('statFootprint').textContent='0 km'}
++function renderSelectedGeometry(g){clearSelectedGeometry();if(!g)return;if($('groundTrackOn').checked&&g.ground_track?.segments_lon_lat_deg?.length){const c=new Cesium.PolylineCollection();for(const seg of g.ground_track.segments_lon_lat_deg){c.add({positions:seg.map(x=>Cesium.Cartesian3.fromDegrees(x[0],x[1],12000)),width:2.2,material:Cesium.Material.fromType('Color',{color:Cesium.Color.fromCssColorString('#ff9f43').withAlpha(.95)})})}state.groundTrackCollection=state.viewer.scene.primitives.add(c);$('statTrack').textContent=g.ground_track.segments_lon_lat_deg.length+' seg'}if($('footprintOn').checked&&g.footprint?.lon_lat_deg?.length){const pos=g.footprint.lon_lat_deg.map(x=>Cesium.Cartesian3.fromDegrees(x[0],x[1],2000));state.footprintEntity=state.viewer.entities.add({polygon:{hierarchy:new Cesium.PolygonHierarchy(pos),material:Cesium.Color.fromCssColorString('#42d3ff').withAlpha(.13),outline:true,outlineColor:Cesium.Color.fromCssColorString('#42d3ff').withAlpha(.85),perPositionHeight:true}});$('statFootprint').textContent=num(g.footprint.surface_radius_km,0,' km')}}
++function geometryPayload(){if(!state.selectedId||mode()==='tle')return null;const base={mode:mode(),satellite_id:state.selectedId,time_sec:+$('timeSlider').value,min_elevation_deg:+$('minEl').value,ground_track_span_min:+$('trackSpan').value,ground_track_samples:181,footprint_samples:72};if(mode()==='multi_shell')return{...base,shells:shellPayloads()};const w=walkerPayload();return{...base,altitude_km:w.altitude_km,inclination_deg:w.inclination_deg,planes:w.planes,sats_per_plane:w.sats_per_plane,phasing:w.phasing,j2:w.j2}}
++async function fetchSelectedGeometry(quiet=false){const req=geometryPayload();if(!req||(!$('groundTrackOn').checked&&!$('footprintOn').checked)){clearSelectedGeometry();return}const seq=++state.geometrySeq;try{const r=await fetch('/api/orbital-geometry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)}),d=await r.json();if(!r.ok)throw new Error(d.detail||'orbital geometry error');if(seq!==state.geometrySeq)return;renderSelectedGeometry(d)}catch(e){if(!quiet)setStatus('Geometry: '+e.message,'warn')}}
++async function renderSnapshot(snap){state.snapshot=snap;if(state.selectedId&&!snap.satellites.some(s=>s.id===state.selectedId)){state.selectedId=null;clearSelectedGeometry()}reconcileSatellites(snap.satellites);const viz=snap.visualization||{};renderOrbits(viz);renderIsl(viz);renderAccess(viz);await renderCoverage(snap.heatmaps||snap.heatmap);renderSelected();$('timeLabel').textContent=fmtTime(snap.time_sec);$('timeSlider').value=String(Math.min(+$('timeSlider').max,snap.time_sec));if(state.selectedId)await fetchSelectedGeometry(true);if(snap.errors?.length)setStatus(`Snapshot completed with ${snap.errors.length} SGP4 warning(s).`,'warn')}
+ async function fetchSnapshot(t,quiet=false){const seq=++state.snapshotSeq;if(!quiet)setStatus('Updating Cesium scene…');try{const r=await fetch('/api/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshotPayload(t))});const d=await r.json();if(!r.ok)throw new Error(d.detail||'snapshot error');if(seq!==state.snapshotSeq)return;await renderSnapshot(d);if(!quiet)setStatus('3D snapshot updated.','good')}catch(e){if(seq!==state.snapshotSeq)return;stopPlayback();setStatus('Error: '+e.message,'bad')}}
+ function renderTimeline(d){const traces=(d.station_timelines||[]).map(t=>({x:t.times_sec.map(x=>x/60),y:t.visible_counts,type:'scatter',mode:'lines',name:t.name}));Plotly.react('coverage',traces,{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{color:'#cbd9e8',size:10},margin:{l:45,r:10,t:10,b:36},xaxis:{title:'Time (min)',gridcolor:'#21384e'},yaxis:{title:'Visible',rangemode:'tozero',gridcolor:'#21384e'},legend:{orientation:'h'}},{responsive:true,displaylogo:false})}
+-function renderAnalysis(d){$('kSat').textContent=d.total_satellites??'–';$('kPeriod').textContent=d.mode==='tle'?(d.snapshot?.length?num(d.snapshot[0].period_min,2,' min'):'mixed'):num(d.orbital_period_min,2,' min');$('kAvail').textContent=d.coverage_summary?num(100*d.coverage_summary.worst_availability,1,'%'):'–';$('kVis').textContent=d.coverage_summary?num(d.coverage_summary.mean_visible,2):'–';renderTimeline(d);const rows=(d.station_timelines||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${num(100*x.availability,1,'%')}</td><td>${num(x.avg_visible,2)}</td><td>${num(x.handovers_per_hour,1,'/h')}</td><td>${num(x.max_sampled_outage_sec,0,' s')}</td></tr>`).join('');$('resultTable').innerHTML=`<table><thead><tr><th>Service point</th><th>Availability</th><th>Avg visible</th><th>Handovers</th><th>Max outage</th></tr></thead><tbody>${rows}</tbody></table>`;$('tableTitle').textContent='Service availability summary'}
+-async function runAnalysis(){stopPlayback();setStatus('Running service analysis…');$('runBtn').disabled=true;try{let url='/api/simulate',body=walkerPayload();if(mode()==='tle'){url='/api/tle/simulate';body={tle_text:$('tleText').value,start_utc:$('startUtc').value.trim()||null,duration_min:+$('dur').value,step_sec:+$('step').value,stations:stations()}}const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),d=await r.json();if(!r.ok)throw new Error(d.detail||'analysis error');renderAnalysis(d);configureTimeSlider();await fetchSnapshot(0,true);setStatus('Analysis complete. Time playback is ready.','good')}catch(e){setStatus('Error: '+e.message,'bad')}finally{$('runBtn').disabled=false}}
++function renderAnalysis(d){$('kSat').textContent=d.total_satellites??'–';$('kPeriod').textContent=(d.mode==='tle'||d.mode==='multi_shell')?(d.mode==='multi_shell'?'mixed':(d.snapshot?.length?num(d.snapshot[0].period_min,2,' min'):'mixed')):num(d.orbital_period_min,2,' min');$('kAvail').textContent=d.coverage_summary?num(100*d.coverage_summary.worst_availability,1,'%'):'–';$('kVis').textContent=d.coverage_summary?num(d.coverage_summary.mean_visible,2):'–';renderTimeline(d);const rows=(d.station_timelines||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${num(100*x.availability,1,'%')}</td><td>${num(x.avg_visible,2)}</td><td>${num(x.handovers_per_hour,1,'/h')}</td><td>${num(x.max_sampled_outage_sec,0,' s')}</td></tr>`).join('');$('resultTable').innerHTML=`<table><thead><tr><th>Service point</th><th>Availability</th><th>Avg visible</th><th>Handovers</th><th>Max outage</th></tr></thead><tbody>${rows}</tbody></table>`;$('tableTitle').textContent='Service availability summary'}
++async function runAnalysis(){stopPlayback();setStatus('Running service analysis…');$('runBtn').disabled=true;try{let url='/api/simulate',body=walkerPayload();if(mode()==='multi_shell'){url='/api/multi-shell/simulate';body=multiShellPayload()}else if(mode()==='tle'){url='/api/tle/simulate';body={tle_text:$('tleText').value,start_utc:$('startUtc').value.trim()||null,duration_min:+$('dur').value,step_sec:+$('step').value,stations:stations()}}const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),d=await r.json();if(!r.ok)throw new Error(d.detail||'analysis error');renderAnalysis(d);configureTimeSlider();await fetchSnapshot(0,true);setStatus('Analysis complete. Time playback is ready.','good')}catch(e){setStatus('Error: '+e.message,'bad')}finally{$('runBtn').disabled=false}}
+ async function parseTLE(){setStatus('Parsing TLE…');try{const r=await fetch('/api/tle/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tle_text:$('tleText').value})}),d=await r.json();if(!r.ok)throw new Error(d.detail||'TLE parse error');const f=d.satellites[0];$('tleMeta').innerHTML=`Parsed <b>${d.count}</b> satellite(s) · SGP4: <b>${d.sgp4_available?'available':'not installed'}</b>${f?`<br>${esc(f.name)} · NORAD ${esc(f.norad_id)} · ${esc(f.epoch_utc)}`:''}`;setStatus('TLE parsed successfully.',d.sgp4_available?'good':'warn')}catch(e){$('tleMeta').textContent=e.message;setStatus('Error: '+e.message,'bad')}}
+-async function runTrade(){if(mode()==='tle')return;setStatus('Running compact trade study…');const p=walkerPayload(),req={altitudes_km:[Math.max(300,p.altitude_km-188),p.altitude_km,p.altitude_km+212],inclinations_deg:[p.inclination_deg,53],planes_list:[Math.max(4,p.planes-4),p.planes],sats_per_plane_list:[Math.max(4,p.sats_per_plane-4),p.sats_per_plane],phasing:p.phasing,duration_min:p.duration_min,step_sec:Math.max(120,p.step_sec),min_availability:.95,stations:p.stations};try{const r=await fetch('/api/trade-study',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)}),d=await r.json();if(!r.ok)throw new Error(d.detail||'trade error');const rows=d.results.map((x,i)=>`<tr><td>${i+1}</td><td>${x.altitude_km}</td><td>${x.inclination_deg}°</td><td>${x.planes}×${x.sats_per_plane}</td><td>${x.total_satellites}</td><td>${num(100*x.worst_availability,1,'%')}</td><td>${num(x.mean_visible,2)}</td></tr>`).join('');$('resultTable').innerHTML=`<table><thead><tr><th>#</th><th>Alt km</th><th>Inc</th><th>P×S</th><th>Total</th><th>Worst avail.</th><th>Mean visible</th></tr></thead><tbody>${rows}</tbody></table>`;$('tableTitle').textContent='Trade study';setStatus('Trade study complete.','good')}catch(e){setStatus('Error: '+e.message,'bad')}}
++async function runTrade(){if(mode()!=='walker')return;setStatus('Running compact trade study…');const p=walkerPayload(),req={altitudes_km:[Math.max(300,p.altitude_km-188),p.altitude_km,p.altitude_km+212],inclinations_deg:[p.inclination_deg,53],planes_list:[Math.max(4,p.planes-4),p.planes],sats_per_plane_list:[Math.max(4,p.sats_per_plane-4),p.sats_per_plane],phasing:p.phasing,duration_min:p.duration_min,step_sec:Math.max(120,p.step_sec),min_availability:.95,stations:p.stations};try{const r=await fetch('/api/trade-study',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)}),d=await r.json();if(!r.ok)throw new Error(d.detail||'trade error');const rows=d.results.map((x,i)=>`<tr><td>${i+1}</td><td>${x.altitude_km}</td><td>${x.inclination_deg}°</td><td>${x.planes}×${x.sats_per_plane}</td><td>${x.total_satellites}</td><td>${num(100*x.worst_availability,1,'%')}</td><td>${num(x.mean_visible,2)}</td></tr>`).join('');$('resultTable').innerHTML=`<table><thead><tr><th>#</th><th>Alt km</th><th>Inc</th><th>P×S</th><th>Total</th><th>Worst avail.</th><th>Mean visible</th></tr></thead><tbody>${rows}</tbody></table>`;$('tableTitle').textContent='Trade study';setStatus('Trade study complete.','good')}catch(e){setStatus('Error: '+e.message,'bad')}}
+ function configureTimeSlider(){const max=Math.max(60,(+$('dur').value||120)*60),step=Math.max(1,+$('step').value||60);$('timeSlider').max=String(max);$('timeSlider').step=String(step);$('timeSlider').value='0';$('timeLabel').textContent=fmtTime(0)}function stopPlayback(){state.playing=false;if(state.timer){clearInterval(state.timer);state.timer=null}$('playBtn').textContent='▶ Play'}function startPlayback(){if(state.playing){stopPlayback();return}state.playing=true;$('playBtn').textContent='Ⅱ Pause';state.timer=setInterval(()=>{const sl=$('timeSlider'),max=+sl.max,step=Math.max(1,+$('step').value||60),speed=+$('speed').value||1;let n=+sl.value+step*speed;if(n>max)n=0;sl.value=String(n);$('timeLabel').textContent=fmtTime(n);fetchSnapshot(n,true)},650)}function sliderChanged(){stopPlayback();const v=+$('timeSlider').value;$('timeLabel').textContent=fmtTime(v);clearTimeout(state.sliderDebounce);state.sliderDebounce=setTimeout(()=>fetchSnapshot(v,true),110)}
+ const GLOBAL_VIEW={lon:100,lat:20,height:30000000};function flyGlobal(instant=false){if(!state.viewer)return;const destination=Cesium.Cartesian3.fromDegrees(GLOBAL_VIEW.lon,GLOBAL_VIEW.lat,GLOBAL_VIEW.height);if(instant){state.viewer.camera.setView({destination});return}state.viewer.camera.flyTo({destination,duration:.8})}function flySelected(){const e=state.satEntities.get(state.selectedId);if(!e){setStatus('Select a satellite first.','warn');return}state.viewer.flyTo(e,{duration:.8,offset:new Cesium.HeadingPitchRange(0,Cesium.Math.toRadians(-25),1800000)})}
+ function refetchLayers(){if(state.snapshot)fetchSnapshot(+$('timeSlider').value,true)}
+-function bind(){$('mode').addEventListener('change',setModeUI);$('runBtn').addEventListener('click',runAnalysis);$('tradeBtn').addEventListener('click',runTrade);$('tleParseBtn').addEventListener('click',parseTLE);$('tleExampleBtn').addEventListener('click',()=>{$('tleText').value=verificationTLE;parseTLE()});$('applyServiceBtn').addEventListener('click',()=>applyServiceSelection(false));$('clearServiceBtn').addEventListener('click',()=>{setCountryChecks([]);const k=document.querySelector('.service-country[value="KOR"]');if(k)k.checked=true;updatePresetStates();applyServiceSelection(false)});$('citiesPerCountry').addEventListener('change',()=>applyServiceSelection(false));$('boundaryMode').addEventListener('change',renderServiceBoundaries);$('playBtn').addEventListener('click',startPlayback);$('resetTimeBtn').addEventListener('click',()=>{stopPlayback();$('timeSlider').value='0';fetchSnapshot(0,true)});$('timeSlider').addEventListener('input',sliderChanged);$('dur').addEventListener('change',configureTimeSlider);$('step').addEventListener('change',configureTimeSlider);$('minEl').addEventListener('change',()=>applyServiceSelection(false));$('earthOn').addEventListener('change',applyEarthDisplay);$('earthSource').addEventListener('change',applyEarthSource);$('earthOpacity').addEventListener('input',applyEarthDisplay);$('satSize').addEventListener('input',updateSatelliteStyles);$('satRender').addEventListener('change',updateSatelliteStyles);$('satModel').addEventListener('change',updateSatelliteStyles);for(const id of ['orbitOn','islOn','accessOn','coverageOn'])$(id).addEventListener('change',refetchLayers);$('coverageOpacity').addEventListener('input',()=>{const a=+$('coverageOpacity').value;$('coverageOpacityValue').textContent=a.toFixed(2);for(const layer of state.coverageLayers)layer.alpha=a});$('heatRes').addEventListener('input',()=>{$('heatResValue').textContent=`${$('heatRes').value}×${$('heatRes').value}`});$('heatRes').addEventListener('change',refetchLayers);$('globalView').addEventListener('click',()=>flyGlobal(false));$('serviceView').addEventListener('click',flyServiceArea);$('selectedView').addEventListener('click',flySelected)}
+-async function bootstrap(){bind();configureTimeSlider();setModeUI();$('tleText').value=verificationTLE;try{await loadServiceCatalog();await loadCesium();await initViewer();await applyServiceSelection(false);setStatus(`CesiumJS ${CVER} ready (${state.cesiumSource}).`,'good');await runAnalysis();flyGlobal(true)}catch(e){console.error(e);$('viewerError').style.display='flex';$('viewerError').innerHTML=`<div><b>초기화하지 못했습니다.</b><br><br>${esc(e.message)}<br><br>내부망에서는 먼저 로컬 Cesium/Natural Earth asset을 설치하세요.</div>`;setStatus('Initialization failed.','bad')}}
++function bind(){$('mode').addEventListener('change',setModeUI);$('addShellBtn').addEventListener('click',()=>addShell({}));$('runBtn').addEventListener('click',runAnalysis);$('tradeBtn').addEventListener('click',runTrade);$('tleParseBtn').addEventListener('click',parseTLE);$('tleExampleBtn').addEventListener('click',()=>{$('tleText').value=verificationTLE;parseTLE()});$('applyServiceBtn').addEventListener('click',()=>applyServiceSelection(false));$('clearServiceBtn').addEventListener('click',()=>{setCountryChecks([]);const k=document.querySelector('.service-country[value="KOR"]');if(k)k.checked=true;updatePresetStates();applyServiceSelection(false)});$('citiesPerCountry').addEventListener('change',()=>applyServiceSelection(false));$('boundaryMode').addEventListener('change',renderServiceBoundaries);$('playBtn').addEventListener('click',startPlayback);$('resetTimeBtn').addEventListener('click',()=>{stopPlayback();$('timeSlider').value='0';fetchSnapshot(0,true)});$('timeSlider').addEventListener('input',sliderChanged);$('dur').addEventListener('change',configureTimeSlider);$('step').addEventListener('change',configureTimeSlider);$('minEl').addEventListener('change',()=>applyServiceSelection(false));$('earthOn').addEventListener('change',applyEarthDisplay);$('earthSource').addEventListener('change',applyEarthSource);$('earthOpacity').addEventListener('input',applyEarthDisplay);$('satSize').addEventListener('input',updateSatelliteStyles);$('satRender').addEventListener('change',updateSatelliteStyles);$('satModel').addEventListener('change',updateSatelliteStyles);for(const id of ['orbitOn','islOn','accessOn','coverageOn'])$(id).addEventListener('change',refetchLayers);for(const id of ['groundTrackOn','footprintOn'])$(id).addEventListener('change',()=>fetchSelectedGeometry(true));$('trackSpan').addEventListener('input',()=>{$('trackSpanValue').textContent=$('trackSpan').value+' min'});$('trackSpan').addEventListener('change',()=>fetchSelectedGeometry(true));$('coverageOpacity').addEventListener('input',()=>{const a=+$('coverageOpacity').value;$('coverageOpacityValue').textContent=a.toFixed(2);for(const layer of state.coverageLayers)layer.alpha=a});$('heatRes').addEventListener('input',()=>{$('heatResValue').textContent=`${$('heatRes').value}×${$('heatRes').value}`});$('heatRes').addEventListener('change',refetchLayers);$('globalView').addEventListener('click',()=>flyGlobal(false));$('serviceView').addEventListener('click',flyServiceArea);$('selectedView').addEventListener('click',flySelected)}
++async function bootstrap(){initShells();bind();configureTimeSlider();setModeUI();$('tleText').value=verificationTLE;try{await loadServiceCatalog();await loadCesium();await initViewer();await applyServiceSelection(false);setStatus(`CesiumJS ${CVER} ready (${state.cesiumSource}).`,'good');await runAnalysis();flyGlobal(true)}catch(e){console.error(e);$('viewerError').style.display='flex';$('viewerError').innerHTML=`<div><b>초기화하지 못했습니다.</b><br><br>${esc(e.message)}<br><br>내부망에서는 먼저 로컬 Cesium/Natural Earth asset을 설치하세요.</div>`;setStatus('Initialization failed.','bad')}}
+ bootstrap();
+ })();
+ </script>
+diff --git a/pyproject.toml b/pyproject.toml
+index da7a540..24bd4d8 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "k-leo-orbit-designer"
+-version = "1.0.0"
++version = "1.1.0"
+ description = "Test Orbit Designer - LEO satellite communications constellation design and validation tool"
+ readme = "README.md"
+ requires-python = ">=3.12,<3.14"
+diff --git a/scripts/run_validation.py b/scripts/run_validation.py
+index 9c44ff5..dc295c6 100644
+--- a/scripts/run_validation.py
++++ b/scripts/run_validation.py
+@@ -15,6 +15,8 @@ from app.core.simulation import run_simulation
+ from app.core.snapshot import walker_snapshot
+ from app.core.tle import parse_tle_text, propagate_tles, sgp4_available
+ from app.core.service_regions import resolve_selection
++from app.core.geometry import walker_orbital_geometry
++from app.core.multishell import multi_shell_snapshot, run_multi_shell_simulation
+ 
+ 
+ VANGUARD_TLE = (
+@@ -41,6 +43,13 @@ def main() -> None:
+         cfg, 0, min_elevation_deg=20, heatmap_points=28, stations=service_stations,
+         coverage_areas=service["coverage_areas"],
+     )
++    geometry = walker_orbital_geometry(cfg, "P01-S01", 0, min_elevation_deg=20, ground_track_samples=181)
++    shells = [
++        ("SH1", "Core 1280 km", cfg),
++        ("SH2", "High-inclination supplement", ConstellationConfig(600, 70, 6, 12, 1, True)),
++    ]
++    multi_snap = multi_shell_snapshot(shells, 0, min_elevation_deg=20, heatmap=False, stations=service_stations)
++    multi_sim = run_multi_shell_simulation(shells, service_stations, 30, 120)
+ 
+     tle_records = parse_tle_text(VANGUARD_TLE)
+     sgp4_check = {
+@@ -56,7 +65,7 @@ def main() -> None:
+         sgp4_check["pass_1m"] = bool(err_m < 1.0)
+ 
+     validation = {
+-        "version": "1.0.0",
++        "version": "1.1.0",
+         "scenario": "Test Orbit Designer default 1280 km / 42 deg / Walker 8x16 / F=1",
+         "orbital_period_min": orbital_period_s(1280) / 60,
+         "j2_raan_drift_deg_per_day": float(np.degrees(j2_raan_rate_rad_s(1280, 42)) * 86400),
+@@ -90,6 +99,20 @@ def main() -> None:
+             "epoch_utc": tle_records[0].epoch_utc.isoformat().replace("+00:00", "Z"),
+         },
+         "sgp4_reference": sgp4_check,
++        "v1_1_orbital_geometry": {
++            "selected_satellite": geometry["satellite_id"],
++            "footprint_radius_km_min_el_20": geometry["footprint"]["surface_radius_km"],
++            "footprint_central_angle_deg": geometry["footprint"]["central_angle_deg"],
++            "ground_track_segments": len(geometry["ground_track"]["segments_lon_lat_deg"]),
++            "ground_track_samples": geometry["ground_track"]["samples"],
++        },
++        "v1_1_multi_shell": {
++            "shell_count": len(shells),
++            "satellite_count": len(multi_snap["satellites"]),
++            "orbit_paths": len(multi_snap["visualization"]["orbits"]),
++            "combined_mean_visible_30min": multi_sim["coverage_summary"]["mean_visible"],
++            "isl_scope": "intra-shell only",
++        },
+     }
+     validation["cesium_visualization"] = {
+         "orbit_paths": len(snap["visualization"]["orbits"]),
+@@ -99,7 +122,7 @@ def main() -> None:
+         "offline_earth_asset": (ROOT / "app" / "static" / "earth_blue_marble_2048.jpg").exists(),
+         "satellite_glb_asset": (ROOT / "app" / "static" / "kleo_satellite.glb").exists(),
+     }
+-    out = ROOT / "outputs" / "validation_report_v1_0_0.json"
++    out = ROOT / "outputs" / "validation_report_v1_1_0.json"
+     out.write_text(json.dumps(validation, indent=2), encoding="utf-8")
+     print(json.dumps(validation, indent=2))
+ 
+diff --git a/tests/test_api.py b/tests/test_api.py
+index 09d3eb2..c90f88e 100644
+--- a/tests/test_api.py
++++ b/tests/test_api.py
+@@ -12,7 +12,7 @@ def test_health_endpoint_reports_v14():
+     assert response.status_code == 200
+     payload = response.json()
+     assert payload["status"] == "ok"
+-    assert payload["version"] == "1.0.0"
++    assert payload["version"] == "1.1.0"
+     assert isinstance(payload["sgp4_available"], bool)
+ 
+ 
+diff --git a/tests/test_render_deployment.py b/tests/test_render_deployment.py
+index 15e0642..012897f 100644
+--- a/tests/test_render_deployment.py
++++ b/tests/test_render_deployment.py
+@@ -11,6 +11,7 @@ def test_render_blueprint_contract():
+     assert "healthCheckPath: /health" in text
+     assert "autoDeployTrigger: commit" in text
+     assert "KLEO_SERVER_MODE" in text
++    assert "maxShutdownDelaySeconds" not in text
+ 
+ 
+ def test_dockerfile_contract():
+diff --git a/tests/test_server_mode.py b/tests/test_server_mode.py
+index b5a0f2e..a923c5a 100644
+--- a/tests/test_server_mode.py
++++ b/tests/test_server_mode.py
+@@ -10,7 +10,7 @@ def test_health_server_version_and_headers():
+     r = client.get("/health")
+     assert r.status_code == 200
+     body = r.json()
+-    assert body["version"] == "1.0.0"
++    assert body["version"] == "1.1.0"
+     assert body["status"] == "ok"
+     assert r.headers["x-content-type-options"] == "nosniff"
+     assert "x-request-id" in r.headers
+@@ -21,7 +21,7 @@ def test_server_info_exposes_limits():
+     r = client.get("/api/server-info")
+     assert r.status_code == 200
+     body = r.json()
+-    assert body["version"] == "1.0.0"
++    assert body["version"] == "1.1.0"
+     assert body["limits"]["max_satellites"] >= 256
+     assert body["limits"]["max_heatmap_points"] >= 28
+ 
+diff --git a/tests/test_ui_contract.py b/tests/test_ui_contract.py
+index f558b8a..a56f5b0 100644
+--- a/tests/test_ui_contract.py
++++ b/tests/test_ui_contract.py
+@@ -57,13 +57,14 @@ def test_v141_satellite_point_markers_use_earth_occlusion():
+     assert 'v.scene.preRender.addEventListener(updatePointOcclusion)' in HTML
+     assert 'e._kleoPosition=pos' in HTML
+     # The satellite point/label block must no longer force through-Earth rendering.
+-    satellite_block = HTML[HTML.index("point:{pixelSize:9,color:Cesium.Color.CYAN"):HTML.index("e._kleoSatelliteId=s.id")]
++    satellite_block = HTML[HTML.index("point:{pixelSize:9,color:pointBase"):HTML.index("e._kleoSatelliteId=s.id")]
+     assert 'Number.POSITIVE_INFINITY' not in satellite_block
+ 
+ 
+ def test_v142_point_markers_have_no_outline_and_model_selector_is_wired():
+-    assert 'outlineColor:' not in HTML
+-    assert 'outlineWidth:' not in HTML
++    satellite_block = HTML[HTML.index("point:{pixelSize:9,color:pointBase"):HTML.index("e._kleoSatelliteId=s.id")]
++    assert 'outlineColor:' not in satellite_block
++    assert 'outlineWidth:' not in satellite_block
+     assert 'const SAT_MODELS=' in HTML
+     assert "kleo_satellite_compact.glb" in HTML
+     assert "kleo_satellite_broadband.glb" in HTML
+@@ -85,10 +86,21 @@ def test_v15_global_initial_view_and_service_selection_do_not_auto_zoom():
+     assert "$('serviceView').addEventListener('click',flyServiceArea)" in HTML
+ 
+ 
+-def test_v100_brand_and_walker_defaults_are_consistent():
+-    assert '<title>Test Orbit Designer V1.0.0</title>' in HTML
++def test_v110_brand_and_walker_defaults_are_consistent():
++    assert '<title>Test Orbit Designer V1.1.0</title>' in HTML
+     assert '<div class="brand">Test Orbit Designer</div>' in HTML
+-    assert '<div class="version">V1.0.0 · Render-ready stateless web app</div>' in HTML
++    assert '<div class="version">V1.1.0 · Orbital Analysis · Render-ready</div>' in HTML
+     assert 'id="alt" type="number" value="1280"' in HTML
+     assert 'id="planes" type="number" value="8"' in HTML
+     assert 'id="spp" type="number" value="16"' in HTML
++
++
++def test_v110_orbital_analysis_controls_and_multishell_ui_are_present():
++    for token in [
++        'value="multi_shell"', 'id="multiShellFields"', 'id="shellList"', 'id="addShellBtn"',
++        'id="groundTrackOn"', 'id="footprintOn"', 'id="trackSpan"',
++        '/api/multi-shell/simulate', '/api/orbital-geometry', 'function fetchSelectedGeometry',
++    ]:
++        assert token in HTML
++    assert "$('tradeBtn').disabled=m!=='walker'" in HTML
++
+diff --git a/app/core/geometry.py b/app/core/geometry.py
+new file mode 100644
+--- /dev/null
++++ b/app/core/geometry.py
+@@ -0,0 +1,148 @@
++from __future__ import annotations
++
++import math
++
++import numpy as np
++
++from .constants import R_EARTH_KM
++from .constellation import satellite_ids, satellite_positions_eci
++from .models import ConstellationConfig
++from .orbit import ecef_to_latlon, eci_to_ecef
++
++
++def minimum_elevation_footprint_central_angle_rad(altitude_km: float, min_elevation_deg: float) -> float:
++    """Spherical-Earth footprint half-angle for a minimum ground elevation.
++
++    psi = acos((R_E / (R_E + h)) cos(E)) - E
++
++    ``min_elevation_deg`` is allowed to be slightly negative because the public
++    API already permits -5 deg for engineering sensitivity studies.
++    """
++    altitude_km = float(altitude_km)
++    if altitude_km <= 0.0:
++        raise ValueError("Altitude must be positive for footprint geometry.")
++    elevation = math.radians(float(min_elevation_deg))
++    ratio = R_EARTH_KM / (R_EARTH_KM + altitude_km)
++    arg = max(-1.0, min(1.0, ratio * math.cos(elevation)))
++    psi = math.acos(arg) - elevation
++    return max(0.0, min(math.pi, psi))
++
++
++def minimum_elevation_footprint(altitude_km: float, min_elevation_deg: float) -> dict:
++    psi = minimum_elevation_footprint_central_angle_rad(altitude_km, min_elevation_deg)
++    return {
++        "altitude_km": float(altitude_km),
++        "min_elevation_deg": float(min_elevation_deg),
++        "central_angle_deg": float(math.degrees(psi)),
++        "surface_radius_km": float(R_EARTH_KM * psi),
++    }
++
++
++def footprint_polygon_lon_lat_deg(
++    center_lat_deg: float,
++    center_lon_deg: float,
++    central_angle_rad: float,
++    samples: int = 72,
++) -> list[list[float]]:
++    """Return a closed small-circle polygon around a sub-satellite point."""
++    samples = max(24, min(int(samples), 360))
++    lat1 = math.radians(float(center_lat_deg))
++    lon1 = math.radians(float(center_lon_deg))
++    delta = float(central_angle_rad)
++    sin_lat1, cos_lat1 = math.sin(lat1), math.cos(lat1)
++    sin_d, cos_d = math.sin(delta), math.cos(delta)
++    points: list[list[float]] = []
++    for bearing in np.linspace(0.0, 2.0 * math.pi, samples, endpoint=False):
++        lat2 = math.asin(max(-1.0, min(1.0, sin_lat1 * cos_d + cos_lat1 * sin_d * math.cos(float(bearing)))))
++        lon2 = lon1 + math.atan2(
++            math.sin(float(bearing)) * sin_d * cos_lat1,
++            cos_d - sin_lat1 * math.sin(lat2),
++        )
++        lon_deg = (math.degrees(lon2) + 180.0) % 360.0 - 180.0
++        points.append([float(lon_deg), float(math.degrees(lat2))])
++    if points:
++        points.append(points[0].copy())
++    return points
++
++
++def _satellite_index(cfg: ConstellationConfig, satellite_id: str) -> int:
++    ids = satellite_ids(cfg)
++    try:
++        return ids.index(str(satellite_id))
++    except ValueError as exc:
++        raise ValueError(f"Unknown Walker satellite id: {satellite_id}.") from exc
++
++
++def walker_ground_track(
++    cfg: ConstellationConfig,
++    satellite_id: str,
++    time_sec: float,
++    span_min: float = 220.0,
++    samples: int = 181,
++) -> dict:
++    """Propagate one Walker satellite and split longitude discontinuities."""
++    idx = _satellite_index(cfg, satellite_id)
++    samples = max(24, min(int(samples), 720))
++    span_sec = max(1.0, float(span_min) * 60.0)
++    times = np.linspace(float(time_sec) - span_sec / 2.0, float(time_sec) + span_sec / 2.0, samples)
++    lon_lat: list[list[float]] = []
++    for t in times:
++        eci = satellite_positions_eci(cfg, float(t))[idx]
++        ecef = eci_to_ecef(eci, float(t))
++        lat, lon = ecef_to_latlon(ecef)
++        lon_lat.append([float(lon), float(lat)])
++
++    segments: list[list[list[float]]] = []
++    current: list[list[float]] = []
++    previous_lon: float | None = None
++    for point in lon_lat:
++        lon = point[0]
++        if previous_lon is not None and abs(lon - previous_lon) > 180.0:
++            if current:
++                segments.append(current)
++            current = []
++        current.append(point)
++        previous_lon = lon
++    if current:
++        segments.append(current)
++
++    return {
++        "span_min": float(span_min),
++        "samples": int(samples),
++        "start_time_sec": float(times[0]),
++        "end_time_sec": float(times[-1]),
++        "segments_lon_lat_deg": segments,
++    }
++
++
++def walker_orbital_geometry(
++    cfg: ConstellationConfig,
++    satellite_id: str,
++    time_sec: float,
++    *,
++    min_elevation_deg: float = 20.0,
++    ground_track_span_min: float = 220.0,
++    ground_track_samples: int = 181,
++    footprint_samples: int = 72,
++) -> dict:
++    idx = _satellite_index(cfg, satellite_id)
++    pos_eci = satellite_positions_eci(cfg, float(time_sec))[idx]
++    pos_ecef = eci_to_ecef(pos_eci, float(time_sec))
++    lat, lon = ecef_to_latlon(pos_ecef)
++    footprint = minimum_elevation_footprint(cfg.altitude_km, min_elevation_deg)
++    footprint["center_lat_deg"] = float(lat)
++    footprint["center_lon_deg"] = float(lon)
++    footprint["lon_lat_deg"] = footprint_polygon_lon_lat_deg(
++        float(lat), float(lon), math.radians(footprint["central_angle_deg"]), footprint_samples
++    )
++    return {
++        "mode": "walker",
++        "satellite_id": str(satellite_id),
++        "time_sec": float(time_sec),
++        "subpoint": {"lat_deg": float(lat), "lon_deg": float(lon)},
++        "position_ecef_km": [float(x) for x in pos_ecef],
++        "ground_track": walker_ground_track(
++            cfg, satellite_id, time_sec, ground_track_span_min, ground_track_samples
++        ),
++        "footprint": footprint,
++    }
+diff --git a/app/core/multishell.py b/app/core/multishell.py
+new file mode 100644
+--- /dev/null
++++ b/app/core/multishell.py
+@@ -0,0 +1,275 @@
++from __future__ import annotations
++
++import re
++from typing import Iterable
++
++import numpy as np
++
++from .constellation import satellite_ids, satellite_positions_eci
++from .geometry import walker_orbital_geometry
++from .ground import elevation_and_range
++from .heatmap import instantaneous_coverage_heatmaps
++from .models import ConstellationConfig, GroundStation
++from .orbit import eci_to_ecef
++from .snapshot import walker_snapshot
++from .visualization import access_links
++
++ShellConfig = tuple[str, str, ConstellationConfig]
++
++
++def normalize_shell_id(value: str | None, index: int = 0) -> str:
++    raw = (value or "").strip().upper()
++    raw = re.sub(r"[^A-Z0-9_-]+", "-", raw).strip("-_")
++    return raw or f"SH{int(index) + 1}"
++
++
++def _prefixed_id(shell_id: str, local_id: str) -> str:
++    return f"{shell_id}-{local_id}"
++
++
++def _shell_payload(shell_id: str, shell_name: str, cfg: ConstellationConfig) -> dict:
++    return {
++        "id": shell_id,
++        "name": shell_name,
++        **cfg.to_dict(),
++        "total_satellites": cfg.total_satellites,
++    }
++
++
++def _combined_state(shells: Iterable[ShellConfig], t_sec: float):
++    shell_list = list(shells)
++    if not shell_list:
++        raise ValueError("Multi-shell mode requires at least one shell.")
++    sat_ids_all: list[str] = []
++    ecef_blocks: list[np.ndarray] = []
++    for shell_id, _shell_name, cfg in shell_list:
++        local_ids = satellite_ids(cfg)
++        sat_ids_all.extend(_prefixed_id(shell_id, x) for x in local_ids)
++        eci = satellite_positions_eci(cfg, float(t_sec))
++        ecef_blocks.append(eci_to_ecef(eci, float(t_sec)))
++    return shell_list, sat_ids_all, np.concatenate(ecef_blocks, axis=0)
++
++
++def multi_shell_snapshot(
++    shells: Iterable[ShellConfig],
++    t_sec: float,
++    min_elevation_deg: float = 20.0,
++    heatmap: bool = True,
++    heatmap_points: int = 28,
++    stations: Iterable[GroundStation] | None = None,
++    include_orbits: bool = True,
++    include_isl: bool = True,
++    include_access: bool = True,
++    orbit_samples: int = 96,
++    coverage_areas: list[dict] | None = None,
++) -> dict:
++    shell_list = list(shells)
++    if not shell_list:
++        raise ValueError("Multi-shell mode requires at least one shell.")
++
++    satellites: list[dict] = []
++    orbits: list[dict] = []
++    isl_links: list[dict] = []
++    combined_ids: list[str] = []
++    ecef_blocks: list[np.ndarray] = []
++
++    for shell_id, shell_name, cfg in shell_list:
++        snap = walker_snapshot(
++            cfg,
++            float(t_sec),
++            min_elevation_deg=min_elevation_deg,
++            heatmap=False,
++            stations=[],
++            include_orbits=include_orbits,
++            include_isl=include_isl,
++            include_access=False,
++            orbit_samples=orbit_samples,
++            coverage_areas=[],
++        )
++        for sat in snap["satellites"]:
++            local_id = sat["id"]
++            global_id = _prefixed_id(shell_id, local_id)
++            item = dict(sat)
++            item.update({
++                "id": global_id,
++                "name": global_id,
++                "source": "Multi-shell Walker",
++                "local_id": local_id,
++                "shell_id": shell_id,
++                "shell_name": shell_name,
++            })
++            satellites.append(item)
++            combined_ids.append(global_id)
++        ecef_blocks.append(np.asarray([
++            [x["ecef_x_km"], x["ecef_y_km"], x["ecef_z_km"]] for x in snap["satellites"]
++        ], dtype=float))
++
++        for path in snap["visualization"]["orbits"]:
++            item = dict(path)
++            item["id"] = f"{shell_id}-{path['id']}"
++            item["shell_id"] = shell_id
++            item["shell_name"] = shell_name
++            orbits.append(item)
++        for link in snap["visualization"]["isl_links"]:
++            item = dict(link)
++            item["a_id"] = _prefixed_id(shell_id, link["a_id"])
++            item["b_id"] = _prefixed_id(shell_id, link["b_id"])
++            item["shell_id"] = shell_id
++            item["shell_name"] = shell_name
++            isl_links.append(item)
++
++    all_ecef = np.concatenate(ecef_blocks, axis=0)
++    heatmaps = instantaneous_coverage_heatmaps(
++        all_ecef, coverage_areas, min_elevation_deg, heatmap_points
++    ) if heatmap else []
++    station_list = list(stations or [])
++    combined_access = access_links(all_ecef, combined_ids, station_list) if include_access and station_list else []
++
++    return {
++        "mode": "multi_shell",
++        "time_sec": float(t_sec),
++        "shells": [_shell_payload(*x) for x in shell_list],
++        "total_satellites": len(satellites),
++        "satellites": satellites,
++        "heatmap": heatmaps[0] if heatmaps else None,
++        "heatmaps": heatmaps,
++        "visualization": {
++            "orbits": orbits if include_orbits else [],
++            "isl_links": isl_links if include_isl else [],
++            "access_links": combined_access,
++            "isl_scope": "intra-shell only",
++        },
++        "errors": [],
++    }
++
++
++def _station_timelines(
++    shells: list[ShellConfig],
++    stations: list[GroundStation],
++    duration_min: float,
++    step_sec: float,
++) -> list[dict]:
++    times = np.arange(0.0, float(duration_min) * 60.0 + 0.1, float(step_sec))
++    records = [{
++        "station": st,
++        "visible_counts": [],
++        "best_elevation": [],
++        "best_ids": [],
++        "ranges": [],
++    } for st in stations]
++
++    for t in times:
++        _shells, ids, ecef = _combined_state(shells, float(t))
++        for rec in records:
++            st = rec["station"]
++            elev, rng = elevation_and_range(ecef, st)
++            finite = np.isfinite(elev) & np.isfinite(rng)
++            visible = finite & (elev >= st.min_elevation_deg)
++            rec["visible_counts"].append(int(visible.sum()))
++            rec["best_elevation"].append(float(np.nanmax(elev)) if np.any(finite) else None)
++            if np.any(visible):
++                candidates = np.where(visible)[0]
++                best = int(candidates[np.argmax(elev[candidates])])
++                rec["best_ids"].append(ids[best])
++                rec["ranges"].append(float(rng[best]))
++            else:
++                rec["best_ids"].append(None)
++                rec["ranges"].append(None)
++
++    result: list[dict] = []
++    for rec in records:
++        counts = np.asarray(rec["visible_counts"], dtype=int)
++        handovers = 0
++        previous = None
++        for sat_id in rec["best_ids"]:
++            if sat_id is None:
++                continue
++            if previous is not None and sat_id != previous:
++                handovers += 1
++            previous = sat_id
++        duration_hr = (float(times[-1] - times[0]) / 3600.0) if len(times) > 1 else 0.0
++        max_run = current = 0
++        for count in counts:
++            if count == 0:
++                current += 1
++                max_run = max(max_run, current)
++            else:
++                current = 0
++        st = rec["station"]
++        result.append({
++            "name": st.name,
++            "lat_deg": st.lat_deg,
++            "lon_deg": st.lon_deg,
++            "min_elevation_deg": st.min_elevation_deg,
++            "times_sec": times.tolist(),
++            "visible_counts": rec["visible_counts"],
++            "best_elevation_deg": rec["best_elevation"],
++            "best_satellite_ids": rec["best_ids"],
++            "best_slant_range_km": rec["ranges"],
++            "availability": float(np.mean(counts > 0)) if len(counts) else 0.0,
++            "avg_visible": float(np.mean(counts)) if len(counts) else 0.0,
++            "max_visible": int(counts.max()) if len(counts) else 0,
++            "handover_count": int(handovers),
++            "handovers_per_hour": float(handovers / duration_hr) if duration_hr > 0 else 0.0,
++            "max_sampled_outage_sec": float(max_run * float(step_sec)),
++        })
++    return result
++
++
++def run_multi_shell_simulation(
++    shells: Iterable[ShellConfig],
++    stations: Iterable[GroundStation],
++    duration_min: float = 120.0,
++    step_sec: float = 60.0,
++) -> dict:
++    shell_list = list(shells)
++    station_list = list(stations)
++    if not shell_list:
++        raise ValueError("Multi-shell mode requires at least one shell.")
++    timelines = _station_timelines(shell_list, station_list, duration_min, step_sec)
++    summary = {
++        "mean_availability": float(np.mean([x["availability"] for x in timelines])) if timelines else 0.0,
++        "worst_availability": float(np.min([x["availability"] for x in timelines])) if timelines else 0.0,
++        "mean_visible": float(np.mean([x["avg_visible"] for x in timelines])) if timelines else 0.0,
++        "mean_handovers_per_hour": float(np.mean([x["handovers_per_hour"] for x in timelines])) if timelines else 0.0,
++        "worst_sampled_outage_sec": float(np.max([x["max_sampled_outage_sec"] for x in timelines])) if timelines else 0.0,
++    }
++    snap = multi_shell_snapshot(
++        shell_list, 0.0, min_elevation_deg=20.0, heatmap=False,
++        stations=station_list, include_orbits=False, include_isl=True, include_access=True,
++    )
++    return {
++        "mode": "multi_shell",
++        "shells": [_shell_payload(*x) for x in shell_list],
++        "total_satellites": sum(cfg.total_satellites for _sid, _name, cfg in shell_list),
++        "coverage_summary": summary,
++        "station_timelines": timelines,
++        "snapshot": snap["satellites"],
++        "isl": {
++            "scope": "intra-shell only",
++            "active_edges": len(snap["visualization"]["isl_links"]),
++        },
++    }
++
++
++def multi_shell_orbital_geometry(
++    shells: Iterable[ShellConfig],
++    satellite_id: str,
++    time_sec: float,
++    **kwargs,
++) -> dict:
++    shell_list = list(shells)
++    for shell_id, shell_name, cfg in shell_list:
++        prefix = f"{shell_id}-"
++        if str(satellite_id).startswith(prefix):
++            local_id = str(satellite_id)[len(prefix):]
++            geometry = walker_orbital_geometry(cfg, local_id, time_sec, **kwargs)
++            geometry.update({
++                "mode": "multi_shell",
++                "satellite_id": str(satellite_id),
++                "local_satellite_id": local_id,
++                "shell_id": shell_id,
++                "shell_name": shell_name,
++            })
++            return geometry
++    raise ValueError(f"Unknown multi-shell satellite id: {satellite_id}.")
+diff --git a/tests/test_v110_orbital_analysis.py b/tests/test_v110_orbital_analysis.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_v110_orbital_analysis.py
+@@ -0,0 +1,127 @@
++import pytest
++from fastapi.testclient import TestClient
++
++from app.core.geometry import minimum_elevation_footprint, walker_ground_track, walker_orbital_geometry
++from app.core.models import ConstellationConfig, GroundStation
++from app.core.multishell import (
++    multi_shell_orbital_geometry,
++    multi_shell_snapshot,
++    normalize_shell_id,
++    run_multi_shell_simulation,
++)
++from app.main import app
++
++
++def _small_shells():
++    return [
++        ("SH1", "Core", ConstellationConfig(1280, 42, 2, 3, 1, True)),
++        ("SH2", "Supplement", ConstellationConfig(600, 70, 2, 2, 1, True)),
++    ]
++
++
++def test_footprint_matches_v110_validation_reference():
++    footprint = minimum_elevation_footprint(1280.0, 20.0)
++    assert footprint["central_angle_deg"] == pytest.approx(18.4979833636, abs=1e-9)
++    assert footprint["surface_radius_km"] == pytest.approx(2059.1860887, abs=1e-6)
++
++
++def test_footprint_shrinks_as_minimum_elevation_increases():
++    low = minimum_elevation_footprint(1280.0, 0.0)["surface_radius_km"]
++    nominal = minimum_elevation_footprint(1280.0, 20.0)["surface_radius_km"]
++    high = minimum_elevation_footprint(1280.0, 30.0)["surface_radius_km"]
++    assert low > nominal > high > 0.0
++
++
++def test_default_ground_track_is_dateline_safe():
++    cfg = ConstellationConfig(1280, 42, 8, 16, 1, True)
++    track = walker_ground_track(cfg, "P01-S01", 0.0, span_min=220.0, samples=181)
++    assert track["samples"] == 181
++    assert len(track["segments_lon_lat_deg"]) == 3
++    for segment in track["segments_lon_lat_deg"]:
++        for a, b in zip(segment, segment[1:]):
++            assert abs(b[0] - a[0]) <= 180.0
++
++
++def test_unknown_walker_satellite_is_rejected():
++    cfg = ConstellationConfig(1280, 42, 8, 16, 1, True)
++    with pytest.raises(ValueError, match="Unknown Walker satellite id"):
++        walker_orbital_geometry(cfg, "P99-S99", 0.0)
++
++
++def test_shell_id_normalization_is_deterministic():
++    assert normalize_shell_id(" shell 2 ") == "SHELL-2"
++    assert normalize_shell_id("", 1) == "SH2"
++    assert normalize_shell_id("my/shell") == "MY-SHELL"
++
++
++def test_multi_shell_snapshot_has_unique_prefixed_satellites():
++    snap = multi_shell_snapshot(
++        _small_shells(), 0.0, heatmap=False, stations=[],
++        include_orbits=False, include_isl=False, include_access=False,
++    )
++    ids = [sat["id"] for sat in snap["satellites"]]
++    assert snap["mode"] == "multi_shell"
++    assert snap["total_satellites"] == 10
++    assert len(ids) == len(set(ids)) == 10
++    assert all(sat["source"] == "Multi-shell Walker" for sat in snap["satellites"])
++    assert any(x.startswith("SH1-") for x in ids)
++    assert any(x.startswith("SH2-") for x in ids)
++
++
++def test_multi_shell_isl_links_stay_within_shells():
++    snap = multi_shell_snapshot(
++        _small_shells(), 0.0, heatmap=False, stations=[],
++        include_orbits=False, include_isl=True, include_access=False,
++    )
++    assert snap["visualization"]["isl_scope"] == "intra-shell only"
++    for link in snap["visualization"]["isl_links"]:
++        prefix = f"{link['shell_id']}-"
++        assert link["a_id"].startswith(prefix)
++        assert link["b_id"].startswith(prefix)
++
++
++def test_multi_shell_simulation_combines_station_visibility():
++    station = GroundStation("Seoul", 37.5665, 126.9780, 20.0)
++    result = run_multi_shell_simulation(_small_shells(), [station], duration_min=10.0, step_sec=120.0)
++    assert result["mode"] == "multi_shell"
++    assert result["total_satellites"] == 10
++    assert len(result["station_timelines"]) == 1
++    assert 0.0 <= result["coverage_summary"]["mean_availability"] <= 1.0
++    assert result["isl"]["scope"] == "intra-shell only"
++
++
++def test_multi_shell_orbital_geometry_selects_requested_shell():
++    geometry = multi_shell_orbital_geometry(
++        _small_shells(), "SH2-P01-S01", 0.0,
++        min_elevation_deg=20.0, ground_track_samples=48, footprint_samples=36,
++    )
++    assert geometry["mode"] == "multi_shell"
++    assert geometry["shell_id"] == "SH2"
++    assert geometry["local_satellite_id"] == "P01-S01"
++    assert geometry["satellite_id"] == "SH2-P01-S01"
++    assert geometry["footprint"]["altitude_km"] == 600.0
++
++
++def test_v110_api_endpoints_accept_small_scenarios():
++    client = TestClient(app)
++    geometry = client.post("/api/orbital-geometry", json={
++        "mode": "walker", "satellite_id": "P01-S01", "time_sec": 0,
++        "altitude_km": 1280, "inclination_deg": 42, "planes": 2,
++        "sats_per_plane": 3, "phasing": 1, "j2": True,
++        "ground_track_samples": 48, "footprint_samples": 36,
++    })
++    assert geometry.status_code == 200, geometry.text
++    assert geometry.json()["mode"] == "walker"
++
++    payload = {
++        "shells": [
++            {"id": "SH1", "name": "Core", "altitude_km": 1280, "inclination_deg": 42, "planes": 2, "sats_per_plane": 3, "phasing": 1, "j2": True},
++            {"id": "SH2", "name": "Supplement", "altitude_km": 600, "inclination_deg": 70, "planes": 2, "sats_per_plane": 2, "phasing": 1, "j2": True},
++        ],
++        "duration_min": 10,
++        "step_sec": 120,
++        "stations": [{"name": "Seoul", "lat_deg": 37.5665, "lon_deg": 126.9780, "min_elevation_deg": 20}],
++    }
++    simulation = client.post("/api/multi-shell/simulate", json=payload)
++    assert simulation.status_code == 200, simulation.text
++    assert simulation.json()["mode"] == "multi_shell"
+diff --git a/examples/multishell_v1_1.json b/examples/multishell_v1_1.json
+new file mode 100644
+--- /dev/null
++++ b/examples/multishell_v1_1.json
+@@ -0,0 +1,31 @@
++{
++  "shells": [
++    {
++      "id": "SH1",
++      "name": "Core 1280 km",
++      "altitude_km": 1280,
++      "inclination_deg": 42,
++      "planes": 8,
++      "sats_per_plane": 16,
++      "phasing": 1,
++      "j2": true
++    },
++    {
++      "id": "SH2",
++      "name": "High-inclination supplement",
++      "altitude_km": 600,
++      "inclination_deg": 70,
++      "planes": 6,
++      "sats_per_plane": 12,
++      "phasing": 1,
++      "j2": true
++    }
++  ],
++  "duration_min": 120,
++  "step_sec": 60,
++  "stations": [
++    {"name": "Seoul", "lat_deg": 37.5665, "lon_deg": 126.9780, "min_elevation_deg": 20},
++    {"name": "Dubai", "lat_deg": 25.2048, "lon_deg": 55.2708, "min_elevation_deg": 20},
++    {"name": "Singapore", "lat_deg": 1.3521, "lon_deg": 103.8198, "min_elevation_deg": 20}
++  ]
++}

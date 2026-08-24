@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: k-leo-orbit-designer
+    name: test-orbit-designer
     runtime: docker
     plan: free
     region: singapore
