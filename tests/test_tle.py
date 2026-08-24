@@ -10,7 +10,7 @@ from app.core.tle import parse_tle_text, propagate_tles, sgp4_available
 TLE_TEXT = (
     "VANGUARD 1\n"
     "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n"
-    "2 00005  34.2682 331.5174 1849677 331.7664  19.3264 10.82419157413667"
+    "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667"
 )
 
 
@@ -21,7 +21,7 @@ def test_parse_tle_metadata_and_epoch():
     assert rec.epoch_utc.tzinfo == timezone.utc
     assert rec.epoch_utc.year == 2000
     assert abs(rec.inclination_deg - 34.2682) < 1e-8
-    assert abs(rec.eccentricity - 0.1849677) < 1e-10
+    assert abs(rec.eccentricity - 0.1859667) < 1e-10
     assert 130 < rec.orbital_period_min < 140
 
 
