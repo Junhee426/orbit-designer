@@ -5,7 +5,8 @@ import numpy as np
 
 from .constants import C_KM_S, MU_EARTH_KM3_S2, R_EARTH_KM
 from .constellation import satellite_positions_eci, satellite_ids
-from .coverage import _handover_stats
+from .coverage import timelines_from_states, summarize_timelines
+from .sampling import sample_times
 from .geometry import walker_orbital_geometry
 from .ground import elevation_and_range
 from .heatmap import instantaneous_coverage_heatmaps
@@ -77,40 +78,25 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
 
 
 def multi_shell_station_timeline(shells, station: GroundStation, times_sec: np.ndarray):
-    counts=[]; ranges=[]; best_elev=[]; best_ids=[]
-    for t in times_sec:
-        ids,_,_,ecef=combined_state(shells,float(t)); elev,rng=elevation_and_range(ecef,station); mask=elev>=station.min_elevation_deg
-        counts.append(int(mask.sum())); best_elev.append(float(elev.max()) if len(elev) else -90.0)
-        if mask.any():
-            cand=np.where(mask)[0]; b=int(cand[np.argmax(elev[cand])]); best_ids.append(ids[b]); ranges.append(float(rng[b]))
-        else: best_ids.append(None); ranges.append(None)
-    arr=np.asarray(counts,dtype=int); idx_map={v:i for i,v in enumerate(dict.fromkeys(x for x in best_ids if x is not None))}
-    idxs=[None if x is None else idx_map[x] for x in best_ids]
-    handovers,hph,outage=_handover_stats(idxs,counts,times_sec)
-    return {"name":station.name,"lat_deg":station.lat_deg,"lon_deg":station.lon_deg,"min_elevation_deg":station.min_elevation_deg,
-            "times_sec":times_sec.tolist(),"visible_counts":counts,"best_elevation_deg":best_elev,"best_satellite_ids":best_ids,
-            "best_slant_range_km":ranges,"min_one_way_propagation_ms":[None if r is None else 1000*r/C_KM_S for r in ranges],
-            "availability":float(np.mean(arr>0)) if len(arr) else 0.0,"avg_visible":float(np.mean(arr)) if len(arr) else 0.0,
-            "max_visible":int(arr.max()) if len(arr) else 0,"handover_count":int(handovers),"handovers_per_hour":float(hph),"max_sampled_outage_sec":float(outage)}
+    ids = combined_state(shells, 0.0)[0]
+    return timelines_from_states([station], times_sec, ids, lambda t: combined_state(shells, t)[3])[0]
 
 
 def run_multi_shell_simulation(shells, stations, duration_min: float, step_sec: float):
-    times=np.arange(0.0,duration_min*60.0+0.1,step_sec)
-    timelines=[multi_shell_station_timeline(shells,st,times) for st in stations]
-    summary={"mean_availability":float(np.mean([x['availability'] for x in timelines])) if timelines else 0.0,
-             "worst_availability":float(np.min([x['availability'] for x in timelines])) if timelines else 0.0,
-             "mean_visible":float(np.mean([x['avg_visible'] for x in timelines])) if timelines else 0.0,
-             "mean_handovers_per_hour":float(np.mean([x['handovers_per_hour'] for x in timelines])) if timelines else 0.0,
-             "worst_sampled_outage_sec":float(np.max([x['max_sampled_outage_sec'] for x in timelines])) if timelines else 0.0}
-    return {"mode":"multi_shell","total_satellites":sum(x[2].total_satellites for x in shells),"orbital_period_min":None,
-            "shells":[{"id":normalize_shell_id(x[0],i),"name":x[1],**x[2].to_dict(),"period_min":orbital_period_s(x[2].altitude_km)/60.0} for i,x in enumerate(shells)],
-            "coverage_summary":summary,"station_timelines":timelines,"snapshot":[]}
+    times = sample_times(duration_min, step_sec)
+    ids = combined_state(shells, 0.0)[0]
+    timelines = timelines_from_states(stations, times, ids, lambda t: combined_state(shells, t)[3])
+    return {"mode":"multi_shell", "total_satellites":sum(x[2].total_satellites for x in shells),
+            "orbital_period_min":None,
+            "shells":[{"id":normalize_shell_id(x[0],i), "name":x[1], **x[2].to_dict(),
+                       "period_min":orbital_period_s(x[2].altitude_km)/60.0} for i,x in enumerate(shells)],
+            "coverage_summary":summarize_timelines(timelines), "station_timelines":timelines, "snapshot":[]}
 
 
 def multi_shell_orbital_geometry(shells, satellite_id: str, t_sec: float, **kwargs):
     for i,(shell_id,shell_name,cfg) in enumerate(shells):
         sid=normalize_shell_id(shell_id,i); prefix=f"{sid}-"
-        if satellite_id.startswith(prefix):
+        if satellite_id.startswith(prefix) and satellite_id[len(prefix):] in satellite_ids(cfg):
             local=satellite_id[len(prefix):]
             g=walker_orbital_geometry(cfg,local,t_sec,**kwargs)
             g["satellite_id"]=satellite_id; g["shell_id"]=sid; g["shell_name"]=shell_name

@@ -22,7 +22,7 @@ from app.core.multishell import multi_shell_snapshot, run_multi_shell_simulation
 VANGUARD_TLE = (
     "VANGUARD 1\n"
     "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n"
-    "2 00005  34.2682 331.5174 1849677 331.7664  19.3264 10.82419157413667"
+    "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667"
 )
 VANGUARD_EPOCH_POSITION_KM = np.array([7022.46529266, -1400.08296755, 0.03995155])
 
@@ -65,7 +65,7 @@ def main() -> None:
         sgp4_check["pass_1m"] = bool(err_m < 1.0)
 
     validation = {
-        "version": "1.1.0",
+        "version": "1.2.0",
         "scenario": "Test Orbit Designer default 1280 km / 42 deg / Walker 8x16 / F=1",
         "orbital_period_min": orbital_period_s(1280) / 60,
         "j2_raan_drift_deg_per_day": float(np.degrees(j2_raan_rate_rad_s(1280, 42)) * 86400),
@@ -122,9 +122,12 @@ def main() -> None:
         "offline_earth_asset": (ROOT / "app" / "static" / "earth_blue_marble_2048.jpg").exists(),
         "satellite_glb_asset": (ROOT / "app" / "static" / "kleo_satellite.glb").exists(),
     }
-    out = ROOT / "outputs" / "validation_report_v1_1_0.json"
+    out = Path.cwd() / "outputs" / "validation_report_v1_2_0.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(validation, indent=2), encoding="utf-8")
     print(json.dumps(validation, indent=2))
+    if sgp4_check["pass_1m"] is False:
+        raise SystemExit("SGP4 reference validation failed.")
 
 
 if __name__ == "__main__":

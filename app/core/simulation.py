@@ -1,5 +1,6 @@
 import numpy as np
 from .models import SimulationConfig
+from .sampling import sample_times
 from .coverage import multi_station_summary
 from .constellation import satellite_positions_eci, satellite_ids
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s
@@ -10,7 +11,7 @@ from .routing import all_station_pair_routes
 
 
 def run_simulation(cfg: SimulationConfig):
-    times = np.arange(0.0, cfg.duration_min * 60.0 + 0.1, cfg.step_sec)
+    times = sample_times(cfg.duration_min, cfg.step_sec)
     timelines, coverage_summary = multi_station_summary(cfg.constellation, cfg.stations, times)
 
     pos_eci = satellite_positions_eci(cfg.constellation, 0.0)
@@ -29,7 +30,7 @@ def run_simulation(cfg: SimulationConfig):
     link_examples = []
     for st in cfg.stations:
         elev, rng = elevation_and_range(pos_ecef, st)
-        visible = np.where(elev >= st.min_elevation_deg)[0]
+        visible = np.where(elev >= max(0.0, st.min_elevation_deg))[0]
         if len(visible):
             best = int(visible[np.argmax(elev[visible])])
             lb = downlink_margin_db(float(rng[best]), cfg.link)
@@ -41,7 +42,7 @@ def run_simulation(cfg: SimulationConfig):
                 **lb,
             })
 
-    routes = all_station_pair_routes(cfg.constellation, pos_eci, pos_ecef, cfg.stations)
+    routes = all_station_pair_routes(cfg.constellation, pos_eci, pos_ecef, cfg.stations) if cfg.include_routes else []
     return {
         "configuration": cfg.constellation.to_dict(),
         "orbital_period_min": orbital_period_s(cfg.constellation.altitude_km) / 60.0,

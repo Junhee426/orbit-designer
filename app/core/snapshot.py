@@ -11,6 +11,7 @@ from .heatmap import instantaneous_coverage_heatmap, instantaneous_coverage_heat
 from .models import ConstellationConfig, GroundStation
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_rad_s, j2_raan_rate_rad_s
 from .ground import elevation_and_range
+from .sampling import sample_times, sampled_metrics
 from .visualization import (
     access_links, nearest_neighbor_isl_links, tle_orbit_paths,
     walker_isl_links, walker_orbit_paths,
@@ -32,7 +33,11 @@ def parse_utc(value: str | None, default: datetime | None = None) -> datetime:
     v = value.strip()
     if v.endswith("Z"):
         v = v[:-1] + "+00:00"
-    dt = datetime.fromisoformat(v)
+    try:
+        dt = datetime.fromisoformat(v)
+    except ValueError as exc:
+        from .tle import TLEParseError
+        raise TLEParseError("start_utc must be an ISO-8601 UTC timestamp.") from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
@@ -196,7 +201,7 @@ def tle_station_timelines(
     step_sec: float,
 ) -> dict:
     records, start = _tle_records_and_start(tle_text, start_utc)
-    times = np.arange(0.0, duration_min * 60.0 + 0.1, step_sec)
+    times = sample_times(duration_min, step_sec)
     ids = [f"NORAD-{r.norad_id}" for r in records]
     by_station = [{
         "station": st,
@@ -216,7 +221,7 @@ def tle_station_timelines(
             st = item["station"]
             elev, rng = elevation_and_range(ecef, st)
             valid = np.isfinite(elev) & np.isfinite(rng)
-            mask = valid & (elev >= st.min_elevation_deg)
+            mask = valid & (elev >= max(0.0, st.min_elevation_deg))
             item["visible_counts"].append(int(mask.sum()))
             item["best_elevation"].append(float(np.nanmax(elev)) if np.any(valid) else None)
             if np.any(mask):
@@ -265,6 +270,9 @@ def tle_station_timelines(
             "handovers_per_hour": float(handovers / duration_hr) if duration_hr > 0 else 0.0,
             "max_sampled_outage_sec": float(max_run * step_sec),
         })
+
+    for row in timelines:
+        row.update(sampled_metrics(row["best_satellite_ids"], row["visible_counts"], times))
 
     summary = {
         "mean_availability": float(np.mean([x["availability"] for x in timelines])) if timelines else 0.0,

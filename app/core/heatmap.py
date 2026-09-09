@@ -44,11 +44,20 @@ def instantaneous_coverage_heatmap(
     if sat.size == 0:
         counts = np.zeros((lat_points, lon_points), dtype=int)
     else:
-        los = sat[None, None, :, :] - ground[:, :, None, :]
-        rng = np.linalg.norm(los, axis=-1)
-        sin_el = np.sum(los * zenith[:, :, None, :], axis=-1) / np.maximum(rng, 1e-12)
-        min_sin = np.sin(np.deg2rad(min_elevation_deg))
-        counts = np.sum(sin_el >= min_sin, axis=-1)
+        # Bound working arrays to 128 grid points x 256 satellites (< 4 MiB).
+        flat_ground = ground.reshape(-1, 3)
+        flat_zenith = zenith.reshape(-1, 3)
+        flat_counts = np.zeros(len(flat_ground), dtype=np.int64)
+        min_sin = np.sin(np.deg2rad(max(0.0, min_elevation_deg)))
+        for g0 in range(0, len(flat_ground), 128):
+            g = flat_ground[g0:g0+128]
+            z = flat_zenith[g0:g0+128]
+            for s0 in range(0, len(sat), 256):
+                los = sat[None, s0:s0+256, :] - g[:, None, :]
+                rng = np.linalg.norm(los, axis=-1)
+                sin_el = np.sum(los * z[:, None, :], axis=-1) / np.maximum(rng, 1e-12)
+                flat_counts[g0:g0+len(g)] += np.sum(sin_el >= min_sin, axis=-1)
+        counts = flat_counts.reshape(lat_points, lon_points)
     return {
         "area_code": area_code,
         "area_name": area_name,
@@ -56,7 +65,7 @@ def instantaneous_coverage_heatmap(
         "lat_deg": lat.tolist(),
         "lon_deg": lon.tolist(),
         "visible_counts": counts.astype(int).tolist(),
-        "min_elevation_deg": float(min_elevation_deg),
+        "min_elevation_deg": float(max(0.0, min_elevation_deg)),
         "max_visible": int(counts.max()) if counts.size else 0,
         "mean_visible": float(counts.mean()) if counts.size else 0.0,
     }
