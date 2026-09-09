@@ -1,0 +1,94 @@
+{
+  "schema_version": "kleo.scenario.v1",
+  "name": "K-LEO scenario",
+  "configuration": {
+    "mode": "walker",
+    "time_sec": 0.0,
+    "min_elevation_deg": 20.0,
+    "heatmap": true,
+    "heatmap_points": 28,
+    "include_orbits": true,
+    "include_isl": true,
+    "include_access": true,
+    "orbit_samples": 96,
+    "coverage_areas": [
+      {
+        "code": "KOR",
+        "name": "South Korea",
+        "lon_min": 126.0,
+        "lat_min": 33.0,
+        "lon_max": 130.0,
+        "lat_max": 39.0
+      },
+      {
+        "code": "ARE",
+        "name": "United Arab Emirates",
+        "lon_min": 51.4,
+        "lat_min": 22.3,
+        "lon_max": 56.6,
+        "lat_max": 26.3
+      },
+      {
+        "code": "SGP",
+        "name": "Singapore",
+        "lon_min": 103.55,
+        "lat_min": 1.1,
+        "lon_max": 104.1,
+        "lat_max": 1.55
+      }
+    ],
+    "stations": [
+      {
+        "name": "Seoul",
+        "lat_deg": 37.5665,
+        "lon_deg": 126.978,
+        "min_elevation_deg": 20.0
+      },
+      {
+        "name": "Busan",
+        "lat_deg": 35.1796,
+        "lon_deg": 129.0756,
+        "min_elevation_deg": 20.0
+      },
+      {
+        "name": "Dubai",
+        "lat_deg": 25.2048,
+        "lon_deg": 55.2708,
+        "min_elevation_deg": 20.0
+      },
+      {
+        "name": "Abu Dhabi",
+        "lat_deg": 24.4539,
+        "lon_deg": 54.3773,
+        "min_elevation_deg": 20.0
+      },
+      {
+        "name": "Singapore",
+        "lat_deg": 1.3521,
+        "lon_deg": 103.8198,
+        "min_elevation_deg": 20.0
+      }
+    ],
+    "altitude_km": 888.0,
+    "inclination_deg": 42.0,
+    "planes": 16,
+    "sats_per_plane": 16,
+    "phasing": 1,
+    "j2": true,
+    "shells": [],
+    "tle_text": null,
+    "start_utc": null
+  },
+  "selection": {
+    "country_codes": [
+      "KOR",
+      "ARE",
+      "SGP"
+    ],
+    "region_codes": [],
+    "cities_per_country": 2,
+    "min_elevation_deg": 20.0
+  },
+  "duration_min": 120.0,
+  "step_sec": 60.0
+}

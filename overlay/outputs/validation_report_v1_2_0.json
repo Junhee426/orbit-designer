@@ -1,0 +1,142 @@
+{
+  "version": "1.2.0",
+  "scenario": "Test Orbit Designer default 1280 km / 42 deg / Walker 8x16 / F=1",
+  "orbital_period_min": 111.15894779128551,
+  "j2_raan_drift_deg_per_day": -3.9039606599182415,
+  "satellite_count": 128,
+  "radius_error_max_m": 9.094947017729282e-10,
+  "coverage_summary": {
+    "mean_availability": 1.0,
+    "worst_availability": 1.0,
+    "mean_visible": 4.416666666666667,
+    "mean_handovers_per_hour": 16.5,
+    "worst_sampled_outage_sec": 0.0,
+    "availability_basis": "geometric_visibility",
+    "sampling_method": "left_hold_intervals"
+  },
+  "stations": [
+    {
+      "name": "Seoul",
+      "availability": 1.0,
+      "avg_visible": 4.816666666666666,
+      "max_visible": 6
+    },
+    {
+      "name": "Dubai",
+      "availability": 1.0,
+      "avg_visible": 5.15,
+      "max_visible": 7
+    },
+    {
+      "name": "Singapore",
+      "availability": 1.0,
+      "avg_visible": 3.283333333333333,
+      "max_visible": 5
+    }
+  ],
+  "service_regions": {
+    "country_codes": [
+      "KOR",
+      "ARE",
+      "SGP"
+    ],
+    "service_points": 3,
+    "coverage_tiles": 3,
+    "camera_bounds": {
+      "lon_min": 51.4,
+      "lat_min": 1.1,
+      "lon_max": 130.0,
+      "lat_max": 39.0
+    }
+  },
+  "heatmaps_t0": [
+    {
+      "area_code": "KOR",
+      "grid": "28x28",
+      "max_visible": 5,
+      "mean_visible": 5.0
+    },
+    {
+      "area_code": "ARE",
+      "grid": "28x28",
+      "max_visible": 6,
+      "mean_visible": 5.090561224489796
+    },
+    {
+      "area_code": "SGP",
+      "grid": "28x28",
+      "max_visible": 4,
+      "mean_visible": 3.0625
+    }
+  ],
+  "isl_active_edges_t0": 256,
+  "isl_mean_range_km_t0": 4074.1971347953513,
+  "link_examples": [
+    {
+      "station": "Seoul",
+      "satellite": "P01-S06",
+      "range_km": 1487.7879313882254,
+      "elevation_deg": 56.102280568925416,
+      "fspl_db": 181.92142054296704,
+      "received_power_dbw": -94.92142054296704,
+      "cn0_dbhz": 106.68887941367277,
+      "ebn0_db": 23.678579457032953,
+      "margin_db": 19.178579457032953
+    },
+    {
+      "station": "Dubai",
+      "satellite": "P07-S06",
+      "range_km": 1673.0151615581628,
+      "elevation_deg": 45.29224021600784,
+      "fspl_db": 182.94059744802317,
+      "received_power_dbw": -95.94059744802317,
+      "cn0_dbhz": 105.66970250861664,
+      "ebn0_db": 22.659402551976825,
+      "margin_db": 18.159402551976825
+    },
+    {
+      "station": "Singapore",
+      "satellite": "P03-S01",
+      "range_km": 1760.383172009521,
+      "elevation_deg": 41.45822105402585,
+      "fspl_db": 183.38274408066906,
+      "received_power_dbw": -96.38274408066906,
+      "cn0_dbhz": 105.22755587597075,
+      "ebn0_db": 22.21725591933094,
+      "margin_db": 17.71725591933094
+    }
+  ],
+  "tle_parser": {
+    "records": 1,
+    "norad_id": "00005",
+    "epoch_utc": "2000-06-27T18:50:19.733568Z"
+  },
+  "sgp4_reference": {
+    "available": true,
+    "case": "Vanguard 1 / Vallado SGP4 verification case 00005",
+    "position_error_m": 6.815514377327052e-06,
+    "pass_1m": true
+  },
+  "v1_1_orbital_geometry": {
+    "selected_satellite": "P01-S01",
+    "footprint_radius_km_min_el_20": 2059.1860887366456,
+    "footprint_central_angle_deg": 18.49798336358426,
+    "ground_track_segments": 3,
+    "ground_track_samples": 181
+  },
+  "v1_1_multi_shell": {
+    "shell_count": 2,
+    "satellite_count": 200,
+    "orbit_paths": 14,
+    "combined_mean_visible_30min": 5.0,
+    "isl_scope": "intra-shell only"
+  },
+  "cesium_visualization": {
+    "orbit_paths": 8,
+    "isl_links": 256,
+    "access_links": 3,
+    "coverage_tiles": 3,
+    "offline_earth_asset": true,
+    "satellite_glb_asset": true
+  }
+}
