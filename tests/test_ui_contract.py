@@ -87,9 +87,9 @@ def test_v15_global_initial_view_and_service_selection_do_not_auto_zoom():
 
 
 def test_v110_brand_and_walker_defaults_are_consistent():
-    assert '<title>Test Orbit Designer V1.1.0</title>' in HTML
+    assert '<title>Test Orbit Designer V1.2.0</title>' in HTML
     assert '<div class="brand">Test Orbit Designer</div>' in HTML
-    assert '<div class="version">V1.1.0 · Orbital Analysis · Render-ready</div>' in HTML
+    assert '<div class="version">V1.2.0 · Orbital Analysis · Render-ready</div>' in HTML
     assert 'id="alt" type="number" value="1280"' in HTML
     assert 'id="planes" type="number" value="8"' in HTML
     assert 'id="spp" type="number" value="16"' in HTML

@@ -41,6 +41,7 @@ class SimulationConfig:
     duration_min: float = 120.0
     step_sec: float = 60.0
     link: LinkBudgetConfig = None
+    include_routes: bool = True
 
     def __post_init__(self):
         if self.link is None:

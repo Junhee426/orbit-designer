@@ -57,8 +57,8 @@ def minimum_station_pair_route(cfg: ConstellationConfig, positions_eci: np.ndarr
 
     elev_a, rng_a = elevation_and_range(positions_ecef, a)
     elev_b, rng_b = elevation_and_range(positions_ecef, b)
-    vis_a = np.where(elev_a >= a.min_elevation_deg)[0]
-    vis_b = np.where(elev_b >= b.min_elevation_deg)[0]
+    vis_a = np.where(elev_a >= max(0.0, a.min_elevation_deg))[0]
+    vis_b = np.where(elev_b >= max(0.0, b.min_elevation_deg))[0]
     if len(vis_a) == 0 or len(vis_b) == 0:
         return None
 

@@ -15,7 +15,7 @@ services:
       - key: KLEO_MAX_TLE_SATELLITES
         value: "512"
       - key: KLEO_MAX_STATIONS
-        value: "24"
+        value: "64"
       - key: KLEO_MAX_COVERAGE_AREAS
         value: "18"
       - key: KLEO_MAX_HEATMAP_POINTS
@@ -36,3 +36,5 @@ services:
         value: "86400"
       - key: KLEO_EXPOSE_SERVER_INFO
         value: "true"
+      - key: KLEO_MAX_CONCURRENT_JOBS
+        value: "2"
