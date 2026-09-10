@@ -1,0 +1,94 @@
+from pathlib import Path
+
+path = Path('app/static/index.html')
+original = path.read_text(encoding='utf-8')
+script = original[original.index('<script>\n(function(){'):]
+markup = '''<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test Orbit Designer V1.2.0</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/workspace.css">
+<script src="/static/plotly.min.js"></script>
+</head>
+<body data-workspace="orbit">
+<a class="skip-link" href="#mainContent">본문으로 이동</a>
+<header class="appbar">
+  <div class="identity"><svg class="brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="8" stroke="currentColor" stroke-width="1.5"/><ellipse cx="20" cy="20" rx="19" ry="7" transform="rotate(-35 20 20)" stroke="currentColor" stroke-width="1.5"/><circle cx="33" cy="10" r="3" fill="currentColor"/></svg><div><div class="brand">Test Orbit Designer</div><div class="version">V1.2.0 · 위성군 설계 워크스페이스</div></div></div>
+  <nav class="workspace-nav" aria-label="작업 화면"><button id="orbitTab" type="button" aria-current="page"><span class="nav-index">01</span>궤도 배치</button><button id="analysisTab" type="button"><span class="nav-index">02</span>상세 분석</button></nav>
+  <div class="scenario-actions"><button id="saveScenarioBtn" class="quiet">설정 저장</button><button id="loadScenarioBtn" class="quiet">설정 불러오기</button></div>
+  <input id="scenarioFile" type="file" accept=".json,application/json" hidden>
+</header>
+<div class="shell">
+<aside class="sidebar" aria-label="설정">
+  <section class="section" data-view="orbit">
+    <h3><span class="section-number">01</span>위성군 구성</h3>
+    <div class="field"><label for="mode">궤도 모델</label><select id="mode"><option value="walker">Walker-Delta</option><option value="multi_shell">Multi-shell Walker</option><option value="tle">TLE / SGP4</option></select></div>
+    <div id="walkerFields">
+      <div class="row"><div class="field"><label for="alt">고도 · km</label><input id="alt" type="number" value="1280" min="160" max="3000"></div><div class="field"><label for="inc">경사각 · °</label><input id="inc" type="number" value="42" min="0" max="180" step="0.1"></div></div>
+      <div class="row"><div class="field"><label for="planes">궤도면 수</label><input id="planes" type="number" value="8" min="1" max="128"></div><div class="field"><label for="spp">궤도면당 위성 수</label><input id="spp" type="number" value="16" min="1" max="256"></div></div>
+      <div class="row"><div class="field"><label for="phase">Walker 위상 · F</label><input id="phase" type="number" value="1"></div><div class="field"><label for="j2">J2 승교점 이동</label><select id="j2"><option value="true">사용</option><option value="false">사용 안 함</option></select></div></div>
+    </div>
+    <div id="multiShellFields" class="multi-only"><div id="shellList" class="shell-list"></div><div class="btns"><button id="addShellBtn" type="button">+ Shell 추가</button></div><div id="shellSummary" class="note"></div></div>
+    <div id="tleFields" class="tle-only"><div class="field"><label for="tleText">TLE 데이터</label><textarea id="tleText"></textarea></div><div class="field"><label for="startUtc">시작 UTC · 비우면 최신 TLE epoch</label><input id="startUtc" placeholder="2026-08-19T00:00:00Z"></div><div class="btns"><button id="tleExampleBtn">예제 입력</button><button id="tleParseBtn">TLE 확인</button></div><div id="tleMeta" class="note"></div></div>
+    <div class="btns"><button class="primary wide" id="previewBtn" disabled>궤도 배치 적용</button></div>
+    <p class="note">설정을 적용하면 현재 시각의 위성 위치와 궤도를 갱신합니다.</p>
+  </section>
+  <section class="section" data-view="analysis"><h3>분석할 위성군</h3><div id="analysisConfig" class="context-summary">Walker-Delta · 1,280 km<br>8개 궤도면 × 16기 · 경사각 42°</div><button id="editOrbitBtn" class="quiet wide">궤도 구성 수정 ↗</button></section>
+  <details id="timeSettings" class="section"><summary>시간 및 관측 조건</summary>
+    <div class="row"><div class="field"><label for="dur">전체 시간 · min</label><input id="dur" type="number" value="120" min="1" max="1440"></div><div class="field"><label for="step">시간 간격 · sec</label><input id="step" type="number" value="60" min="1"></div></div>
+    <div class="field"><label for="minEl">최소 고도각 · °</label><input id="minEl" type="number" value="20" min="0" max="90"></div><p class="note">시간은 3D 재생과 분석에 함께 적용됩니다. 최소 고도각은 지상 가시성과 선택 위성의 풋프린트 기준입니다.</p>
+  </details>
+  <section class="section" data-view="analysis"><h3><span class="section-number">01</span>서비스 지역</h3>
+    <div class="field"><label>지역 프리셋</label><div id="regionPresets" class="preset-row"></div></div>
+    <div class="field"><label>국가 선택</label><div id="countryList" class="country-list"><div class="note">국가 목록을 불러오는 중…</div></div></div>
+    <div class="field"><label for="citiesPerCountry">국가별 주요 도시 수</label><select id="citiesPerCountry"><option value="1">1개</option><option value="2" selected>2개</option><option value="3">3개</option></select></div>
+    <div class="btns"><button id="applyServiceBtn">선택 지역 적용</button><button id="clearServiceBtn" class="quiet">한국만 선택</button></div>
+    <div id="serviceSummary" class="service-summary">기본 지역 · 한국, UAE, 싱가포르</div>
+  </section>
+  <section class="section" data-view="analysis"><h3><span class="section-number">02</span>분석 실행</h3><button class="primary wide" id="runBtn">가시성 분석 실행</button><div class="btns"><button class="wide" id="tradeBtn">500 / 888 / 1,280 km 후보 비교</button></div><p class="note" id="tradeHelp">후보 비교는 Walker-Delta에서 사용할 수 있습니다. 3개 고도와 8·16개 궤도면의 총 6개 구성을 비교합니다.</p></section>
+  <details class="section" data-view="orbit"><summary>지구 및 위성 표시</summary>
+    <label class="check"><input id="earthOn" type="checkbox" checked>지구 표시</label>
+    <div class="field"><label for="earthSource">지구 이미지</label><select id="earthSource"><option value="offline">NASA Blue Marble · 오프라인</option><option value="online">ArcGIS World Imagery · 온라인</option></select></div>
+    <div class="field"><label for="earthOpacity">지구 불투명도</label><div class="range-line"><input id="earthOpacity" type="range" min="0.05" max="1" step="0.05" value="1"><span id="earthOpacityValue" class="range-value">1.00</span></div></div>
+    <div class="field"><label for="satSize">위성 크기</label><div class="range-line"><input id="satSize" type="range" min="0.5" max="8" step="0.25" value="2"><span id="satSizeValue" class="range-value">2.00×</span></div></div>
+    <div class="field"><label for="satRender">위성 표시 방식</label><select id="satRender"><option value="model">3D 모델</option><option value="point">점 마커</option></select></div>
+    <div class="field"><label for="satModel">위성 모델</label><select id="satModel"><option value="default">K-LEO 기본</option><option value="compact">Compact bus</option><option value="broadband">Broadband communications</option><option value="flatpanel">Flat-panel payload</option></select></div>
+    <label class="check"><input id="orbitOn" type="checkbox" checked>궤도선</label>
+    <label class="check"><input id="groundTrackOn" type="checkbox" checked>선택 위성의 지상 궤적</label><label class="check"><input id="footprintOn" type="checkbox" checked>선택 위성의 풋프린트</label>
+    <div class="field"><label for="trackSpan">지상 궤적 시간 범위</label><div class="range-line"><input id="trackSpan" type="range" min="30" max="720" step="10" value="220"><span id="trackSpanValue" class="range-value">220 min</span></div></div><p class="note">지상 궤적과 풋프린트는 Walker / Multi-shell의 선택 위성에 표시됩니다.</p>
+  </details>
+  <details class="section" data-view="orbit"><summary>통신 및 커버리지 레이어</summary><p class="note">필요한 레이어를 켜서 현재 시각의 연결과 가시 범위를 확인하세요.</p>
+    <label class="check"><input id="islOn" type="checkbox">위성 간 연결 · ISL</label><label class="check"><input id="accessOn" type="checkbox">지상국 연결</label><label class="check"><input id="coverageOn" type="checkbox">가시 위성 수 · 히트맵</label>
+    <div class="field"><label for="heatRes">히트맵 격자</label><input id="heatRes" type="range" min="12" max="60" value="28"><div id="heatResValue" class="note">28×28</div></div>
+    <div class="field"><label for="coverageOpacity">히트맵 불투명도</label><div class="range-line"><input id="coverageOpacity" type="range" min="0.05" max="0.9" step="0.05" value="0.55"><span id="coverageOpacityValue" class="range-value">0.55</span></div></div>
+    <div class="field"><label for="boundaryMode">서비스 국가 경계</label><select id="boundaryMode"><option value="off">숨기기</option><option value="auto">표시</option></select></div><div id="boundarySourceNote" class="note">국가 경계를 켜면 지도 데이터를 불러옵니다.</div><p class="note">서비스 지역은 상세 분석 화면에서 선택합니다.</p>
+  </details>
+  <div class="section scenario-mobile"><button id="saveScenarioMobileBtn" class="quiet">설정 저장</button><button id="loadScenarioMobileBtn" class="quiet">불러오기</button></div>
+</aside>
+<main class="main" id="mainContent" tabindex="-1">
+  <div class="workspace-heading"><div><div id="workspaceEyebrow" class="eyebrow">CONSTELLATION OVERVIEW</div><h1 id="workspaceTitle">궤도 배치</h1><p id="workspaceDescription" class="workspace-description">위성군의 구성과 움직임을 한눈에 확인하세요.</p></div><button id="openAnalysisBtn" data-view="orbit" class="quiet">이 구성으로 상세 분석 →</button><button id="backToOrbitBtn" data-view="analysis" class="quiet">궤도 배치 보기 ↗</button></div>
+  <div id="status" class="status" role="status" aria-live="polite">3D 지구를 준비하고 있습니다…</div>
+  <section data-view="orbit" aria-label="궤도 배치 결과">
+    <div class="summary-grid"><div class="summary-stat"><span>전체 위성 수</span><strong id="orbitSatCount">–</strong></div><div class="summary-stat"><span>궤도면 수</span><strong id="orbitPlaneCount">–</strong></div><div class="summary-stat"><span>고도 · km</span><strong id="orbitAltitude">–</strong></div><div class="summary-stat"><span>공전 주기 · min</span><strong id="orbitPeriod">–</strong></div></div>
+    <div class="preview-caption"><span id="previewNotice">배치를 불러오면 현재 시각의 구성 수치가 표시됩니다.</span><span id="previewBadge" class="badge pending">준비 중</span></div>
+    <div class="orbit-grid"><div class="scene-card"><div class="viewer-wrap"><div id="cesiumContainer" class="cesium-host" aria-label="위성 궤도 3D 지도"></div><div id="viewerError" class="viewer-error"></div><div class="overlay-tools"><button id="globalView">전 지구</button><button id="serviceView">서비스 지역</button><button id="selectedView">선택 위성</button></div><div id="heatmap" class="legend"><b>현재 시각의 가시 위성 수</b><div class="legend-bar"></div><span id="coverageLegend"></span></div></div>
+      <div class="timeline"><button id="playBtn">▶ 재생</button><button id="resetTimeBtn" title="시작 시각으로 이동">T0</button><input id="timeSlider" type="range" min="0" max="7200" step="60" value="0" aria-label="시뮬레이션 시각"><select id="speed" aria-label="재생 속도"><option value="1">1×</option><option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option></select><div class="time-label" id="timeLabel">T+00:00:00</div></div>
+    </div><aside class="detail" aria-label="위성 정보"><div><h3>선택 위성</h3><div id="satDetails" class="empty-details"><div class="empty-icon" aria-hidden="true">⌖</div>지도의 위성을 클릭하세요.<br>위치, 속도, 궤도 속성을 확인할 수 있습니다.</div></div><details class="section"><summary>표시 중인 레이어</summary><div class="layer-stat"><span>궤도선</span><b id="statOrbit">0</b></div><div class="layer-stat"><span>지상 궤적</span><b id="statTrack">0</b></div><div class="layer-stat"><span>풋프린트 반경</span><b id="statFootprint">0 km</b></div><div class="layer-stat"><span>ISL 연결</span><b id="statIsl">0</b></div><div class="layer-stat"><span>지상국 연결</span><b id="statAccess">0</b></div><div class="layer-stat"><span>최대 가시 위성 수</span><b id="statHeat">0</b></div><div class="layer-stat"><span>서비스 국가</span><b id="statCountries">0</b></div><div class="layer-stat"><span>관측 도시</span><b id="statStations">0</b></div><div class="layer-stat"><span>커버리지 영역</span><b id="statCoverageAreas">0</b></div><p class="note">Walker ISL은 지구 차폐가 없는 후보 링크이며, TLE ISL은 시각화용 근접 LOS 그래프입니다.</p></details></aside></div>
+  </section>
+  <section data-view="analysis" aria-label="상세 분석 결과">
+    <div class="analysis-toolbar"><p id="analysisNotice" role="status">서비스 지역과 시간 조건을 확인한 뒤 분석을 실행하세요.</p><div class="btns"><button id="exportJsonBtn" disabled>결과 JSON ↓</button><button id="exportCsvBtn" disabled>결과 CSV ↓</button></div></div>
+    <div id="analysisEmpty" class="analysis-empty"><div class="empty-icon" aria-hidden="true">▥</div><h2 id="analysisEmptyTitle">이 위성군의 서비스 가시성을 분석하세요</h2><p id="analysisEmptyDescription">선택한 도시에서 위성이 보이는 시간 비율, 평균 가시 위성 수와 최대 단절시간을 확인할 수 있습니다.</p><div class="workflow-steps"><span>01 서비스 지역 선택</span><span>02 시간·고도각 설정</span><span>03 분석 실행</span></div><button id="emptyRunBtn" class="primary">가시성 분석 실행</button></div>
+    <div id="analysisResults" class="lower" hidden>
+      <div id="metricsCard" class="card"><h3>가시성 핵심 지표</h3><p class="note">선택한 관측 도시와 전체 분석기간 기준</p><div class="kpis"><div class="kpi"><small>전체 위성 수</small><b id="kSat">–</b></div><div class="kpi"><small>공전 주기</small><b id="kPeriod">–</b></div><div class="kpi"><small>최저 가시 시간 비율</small><b id="kAvail">–</b></div><div class="kpi"><small>평균 가시 위성 수</small><b id="kVis">–</b></div></div></div>
+      <div id="chartCard" class="card"><h3>시간에 따른 가시 위성 수</h3><p class="note">범례에서 도시를 선택해 그래프를 비교할 수 있습니다.</p><div id="coverage" class="chart"></div></div>
+      <div class="card"><h3 id="tableTitle">도시별 분석 결과</h3><div id="resultTable" class="table-wrap" tabindex="0" role="region" aria-label="분석 결과표"></div></div>
+    </div>
+    <details class="analysis-method"><summary>지표 해석과 계산 범위</summary><p>가시 시간 비율은 최소 고도각 이상의 위성이 1기 이상 보이는 시간의 비율입니다. RF 링크, 기상, 게이트웨이와 용량을 포함한 서비스 가용률이 아닙니다. 도시별 결과를 국가 전체의 가시성으로 해석하지 마세요.</p><p>단절시간은 설정한 시간 간격으로 표본화한 값입니다. 더 짧은 단절을 확인하려면 간격을 줄여 다시 분석하세요.</p></details>
+  </section>
+</main>
+</div>
+'''
+path.write_text(markup + script, encoding='utf-8')

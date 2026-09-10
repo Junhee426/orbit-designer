@@ -1,0 +1,33 @@
+{
+  "comparison": {
+    "rows": 6,
+    "metricsHidden": true,
+    "chartHidden": true,
+    "exportsEnabled": true
+  },
+  "multiPreview": {
+    "satellites": "200",
+    "planes": "14",
+    "altitude": "600 – 1280",
+    "period": "96.7 – 111.2"
+  },
+  "multiAnalysis": {
+    "satellites": "200",
+    "tradeDisabled": true
+  },
+  "tlePreview": {
+    "satellites": "1",
+    "planes": "해당 없음",
+    "geometryDisabled": true
+  },
+  "tleAnalysis": {
+    "satellites": "1",
+    "tradeDisabled": true
+  },
+  "mobileSettings": {
+    "expanded": "true",
+    "visible": true,
+    "overflow": false
+  },
+  "exceptions": []
+}

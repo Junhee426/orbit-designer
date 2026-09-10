@@ -1,0 +1,132 @@
+{
+  "screenshots": [
+    "C:\\kleo\\orbit-designer\\outputs\\qa-failure.png"
+  ],
+  "failure": "TimeoutError(\"Boolean(document.getElementById('previewBtn')) && !document.getElementById('previewBtn').disabled && document.getElementById('orbitSatCount').textContent.trim() === '128'\")",
+  "requests": [
+    "http://127.0.0.1:8011/api/service-regions/catalog",
+    "http://127.0.0.1:8011/api/service-regions/resolve"
+  ],
+  "exceptions": [],
+  "errorLogs": [
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Refused to apply style from 'http://127.0.0.1:8011/static/vendor/cesium/Widgets/widgets.css' because its MIME type ('application/json') is not a supported stylesheet MIME type, and strict MIME checking is enabled.",
+          "timestamp": 1788998853301.173,
+          "url": "http://127.0.0.1:8011/"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "timestamp": 1788998853304.073,
+          "url": "http://127.0.0.1:8011/static/vendor/cesium/Cesium.js",
+          "networkRequestId": "10256.255"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Refused to execute script from 'http://127.0.0.1:8011/static/vendor/cesium/Cesium.js' because its MIME type ('application/json') is not executable, and strict MIME type checking is enabled.",
+          "timestamp": 1788998853304.143,
+          "url": "http://127.0.0.1:8011/"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Refused to apply style from 'http://127.0.0.1:8011/static/vendor/cesium/Widgets/widgets.css' because its MIME type ('application/json') is not a supported stylesheet MIME type, and strict MIME checking is enabled.",
+          "timestamp": 1788998880291.803,
+          "url": "http://127.0.0.1:8011/"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "timestamp": 1788998880294.282,
+          "url": "http://127.0.0.1:8011/static/vendor/cesium/Cesium.js",
+          "networkRequestId": "10256.325"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Refused to execute script from 'http://127.0.0.1:8011/static/vendor/cesium/Cesium.js' because its MIME type ('application/json') is not executable, and strict MIME type checking is enabled.",
+          "timestamp": 1788998880294.349,
+          "url": "http://127.0.0.1:8011/"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "Failed to load resource: net::ERR_QUIC_PROTOCOL_ERROR",
+          "timestamp": 1788998891605.266,
+          "url": "https://cesium.com/downloads/cesiumjs/releases/1.144/Build/Cesium/Cesium.js",
+          "networkRequestId": "10256.327"
+        }
+      }
+    }
+  ],
+  "failedRequests": [
+    {
+      "method": "Network.loadingFailed",
+      "params": {
+        "requestId": "10256.324",
+        "timestamp": 14742.232684,
+        "type": "Stylesheet",
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true
+      }
+    },
+    {
+      "method": "Network.loadingFailed",
+      "params": {
+        "requestId": "10256.325",
+        "timestamp": 14742.235119,
+        "type": "Script",
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true
+      }
+    },
+    {
+      "method": "Network.loadingFailed",
+      "params": {
+        "requestId": "10256.327",
+        "timestamp": 14753.545994,
+        "type": "Script",
+        "errorText": "net::ERR_QUIC_PROTOCOL_ERROR",
+        "canceled": false
+      }
+    }
+  ]
+}

@@ -33,6 +33,6 @@ earthOn=false;
 if(isEarthOccluded(camera,back)!==false) throw new Error('Earth-off should disable horizon occlusion');
 console.log('ok');
 """
-    r = subprocess.run([node, "-e", script], capture_output=True, text=True, check=False)
+    r = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8", check=False)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "ok"

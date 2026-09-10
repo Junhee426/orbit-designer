@@ -4,7 +4,7 @@
   "orbital_period_min": 111.15894779128551,
   "j2_raan_drift_deg_per_day": -3.9039606599182415,
   "satellite_count": 128,
-  "radius_error_max_m": 9.094947017729282e-10,
+  "radius_error_max_m": 1.8189894035458565e-09,
   "coverage_summary": {
     "mean_availability": 1.0,
     "worst_availability": 1.0,
