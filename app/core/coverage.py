@@ -2,7 +2,7 @@ from typing import Dict, List
 import numpy as np
 from .models import ConstellationConfig, GroundStation
 from .constellation import satellite_states_ecef, satellite_ids
-from .ground import elevation_and_range, elevation_and_range_grid, stations_ecef
+from .ground import elevation_and_range
 from .constants import C_KM_S
 from .sampling import sampled_metrics
 
@@ -52,15 +52,14 @@ def station_timeline(cfg: ConstellationConfig, station: GroundStation, times_sec
 def multi_station_summary(cfg: ConstellationConfig, stations: List[GroundStation], times_sec: np.ndarray):
     """Vectorised equivalent of timelines_from_states() for a single Walker constellation.
 
-    Propagates satellites and broadcasts all stations against them a time
-    chunk at a time, instead of a Python loop per (time, station) pair.
-    Chunk size is sized so the (chunk, S, N) working arrays stay a few MB
-    regardless of constellation/station size. Field-for-field identical to
-    the generic path.
+    Propagates satellites a time chunk at a time and, for each chunk, calls
+    elevation_and_range() once per station against the whole chunk (instead
+    of once per (time, station) pair). Chunk size is sized so the (chunk, N)
+    working arrays stay a few MB regardless of constellation size.
+    Field-for-field identical to the generic path.
     """
     ids = satellite_ids(cfg)
     times = np.asarray(times_sec, dtype=float)
-    st_ecef = stations_ecef(stations)
     thresholds = np.array([max(0.0, st.min_elevation_deg) for st in stations])
 
     n_sats, n_stations = cfg.total_satellites, max(1, len(stations))
@@ -74,8 +73,13 @@ def multi_station_summary(cfg: ConstellationConfig, stations: List[GroundStation
     best_elev_overall = np.empty((T, S), dtype=float)
 
     for i in range(0, T, chunk):
-        sat_ecef = satellite_states_ecef(cfg, times[i:i + chunk], chunk=chunk)  # (c, N, 3)
-        elev, rng = elevation_and_range_grid(sat_ecef, st_ecef)                 # (c, S, N)
+        sat_ecef = satellite_states_ecef(cfg, times[i:i + chunk])  # (c, N, 3)
+        per_station = [elevation_and_range(sat_ecef, st) for st in stations]
+        if per_station:
+            elev = np.stack([e for e, _ in per_station], axis=1)  # (c, S, N)
+            rng = np.stack([r for _, r in per_station], axis=1)   # (c, S, N)
+        else:
+            elev = rng = np.empty((sat_ecef.shape[0], 0, sat_ecef.shape[1]))
         valid = np.isfinite(elev) & np.isfinite(rng)
         mask = valid & (elev >= thresholds[None, :, None])
         visible_counts[i:i + chunk] = mask.sum(axis=-1)

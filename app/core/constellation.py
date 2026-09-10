@@ -2,7 +2,7 @@ import math
 import numpy as np
 from .constants import OMEGA_EARTH_RAD_S
 from .models import ConstellationConfig
-from .orbit import orbital_radius_km, mean_motion_rad_s, j2_raan_rate_rad_s
+from .orbit import orbital_radius_km, mean_motion_rad_s, j2_raan_rate_rad_s, eci_to_ecef_angle
 
 
 def walker_elements(cfg: ConstellationConfig):
@@ -51,13 +51,13 @@ def satellite_positions_eci(cfg: ConstellationConfig, t_sec: float) -> np.ndarra
     return np.stack((x, y, z), axis=-1)
 
 
-def satellite_states_ecef(cfg: ConstellationConfig, times_sec: np.ndarray, chunk: int = 64) -> np.ndarray:
+def satellite_states_ecef(cfg: ConstellationConfig, times_sec: np.ndarray) -> np.ndarray:
     """ECEF positions for every satellite at every requested time, shape (T, N, 3).
 
-    Walker elements and Earth-rotation geometry are computed once and applied
-    to a chunk of time steps at a time, so a station-broadcast on top of this
-    (see coverage.multi_station_summary) stays bounded to a few MB instead of
-    allocating one (N, 3) array per time step in a Python loop.
+    Vectorised equivalent of calling satellite_positions_eci()+eci_to_ecef()
+    once per time step. Callers that need bounded memory (e.g.
+    coverage.multi_station_summary, which broadcasts a station axis on top
+    of this) should chunk times_sec themselves and accumulate the results.
     """
     _, _, raan0, u0 = walker_elements(cfg)
     r = orbital_radius_km(cfg.altitude_km)
@@ -65,23 +65,16 @@ def satellite_states_ecef(cfg: ConstellationConfig, times_sec: np.ndarray, chunk
     inc = math.radians(cfg.inclination_deg)
     ci, si = math.cos(inc), math.sin(inc)
     rate = j2_raan_rate_rad_s(cfg.altitude_km, cfg.inclination_deg) if cfg.j2 else 0.0
-    times = np.asarray(times_sec, dtype=float)
-    out = np.empty((len(times), len(raan0), 3), dtype=float)
-    for i in range(0, len(times), chunk):
-        t = times[i:i + chunk, None]
-        raan = raan0[None, :] + rate * t
-        u = u0[None, :] + n * t
-        cu, su = np.cos(u), np.sin(u)
-        cO, sO = np.cos(raan), np.sin(raan)
-        x = r * (cO * cu - sO * su * ci)
-        y = r * (sO * cu + cO * su * ci)
-        z = r * (su * si)
-        theta = OMEGA_EARTH_RAD_S * t
-        ct, st = np.cos(theta), np.sin(theta)
-        out[i:i + chunk, :, 0] = ct * x + st * y
-        out[i:i + chunk, :, 1] = -st * x + ct * y
-        out[i:i + chunk, :, 2] = z
-    return out
+    t = np.asarray(times_sec, dtype=float)[:, None]
+    raan = raan0[None, :] + rate * t
+    u = u0[None, :] + n * t
+    cu, su = np.cos(u), np.sin(u)
+    cO, sO = np.cos(raan), np.sin(raan)
+    x = r * (cO * cu - sO * su * ci)
+    y = r * (sO * cu + cO * su * ci)
+    z = r * (su * si)
+    eci = np.stack((x, y, z), axis=-1)
+    return eci_to_ecef_angle(eci, OMEGA_EARTH_RAD_S * t)
 
 
 def satellite_ids(cfg: ConstellationConfig):

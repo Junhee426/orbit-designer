@@ -45,9 +45,13 @@ def ecef_to_latlon(r_ecef: np.ndarray):
     return np.degrees(lat), np.degrees(lon)
 
 
-def eci_to_ecef_angle(r_eci: np.ndarray, theta_rad: float) -> np.ndarray:
-    """Rotate inertial vectors about Z by an explicit Earth rotation angle."""
-    c, s = math.cos(theta_rad), math.sin(theta_rad)
+def eci_to_ecef_angle(r_eci: np.ndarray, theta_rad) -> np.ndarray:
+    """Rotate inertial vectors about Z by an explicit Earth rotation angle.
+
+    theta_rad may be a scalar or an array broadcastable against r_eci's
+    leading dimensions (e.g. one angle per time step).
+    """
+    c, s = np.cos(theta_rad), np.sin(theta_rad)
     x = c * r_eci[..., 0] + s * r_eci[..., 1]
     y = -s * r_eci[..., 0] + c * r_eci[..., 1]
     z = r_eci[..., 2]
