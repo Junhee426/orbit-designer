@@ -10,4 +10,4 @@ build/
 *.egg-info/
 .DS_Store
 Thumbs.db
-outputs/*.log
+outputs/
