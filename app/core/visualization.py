@@ -161,7 +161,7 @@ def access_links(positions_ecef: np.ndarray, sat_ids: list[str], stations: Itera
     for st in stations:
         elev, rng = elevation_and_range(positions_ecef, st)
         finite = np.isfinite(elev) & np.isfinite(rng)
-        visible = np.where(finite & (elev >= st.min_elevation_deg))[0]
+        visible = np.where(finite & (elev >= max(0.0, st.min_elevation_deg)))[0]
         station_xyz = ground_ecef(st.lat_deg, st.lon_deg)
         if len(visible) == 0:
             links.append({

@@ -39,15 +39,36 @@ def test_v14_ui_contains_multicountry_region_logic():
         assert token in HTML
 
 
-def test_v141_service_area_controls_are_in_right_panel():
-    sidebar_start = HTML.index('<aside class="sidebar">')
-    sidebar_end = HTML.index('</aside>', sidebar_start)
-    detail_start = HTML.index('<aside class="detail">')
-    service_pos = HTML.index('id="regionPresets"')
-    selected_pos = HTML.index('id="satDetails"')
-    assert not (sidebar_start < service_pos < sidebar_end)
-    assert detail_start < service_pos < selected_pos
-    assert 'grid-template-columns:300px minmax(480px,1fr) 350px' in HTML
+def test_service_controls_and_results_belong_to_analysis_workspace():
+    from html.parser import HTMLParser
+
+    class WorkspaceParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack = []
+            self.controls = {}
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            view = attrs.get('data-view', self.stack[-1][1] if self.stack else None)
+            if 'id' in attrs:
+                assert attrs['id'] not in self.controls, 'Duplicate control ID'
+                self.controls[attrs['id']] = view
+            if tag not in {'input', 'meta', 'link', 'br', 'hr'}:
+                self.stack.append((tag, view))
+
+        def handle_endtag(self, tag):
+            if self.stack and self.stack[-1][0] == tag:
+                self.stack.pop()
+
+    parser = WorkspaceParser()
+    parser.feed(HTML)
+    for control in ['regionPresets', 'countryList', 'runBtn', 'coverage', 'resultTable', 'exportJsonBtn']:
+        assert parser.controls[control] == 'analysis'
+    for control in ['cesiumContainer', 'previewBtn', 'satDetails', 'orbitSatCount']:
+        assert parser.controls[control] == 'orbit'
+    assert '<body data-workspace="orbit">' in HTML
+    assert parser.controls['status'] is None
 
 
 def test_v141_satellite_point_markers_use_earth_occlusion():
@@ -75,11 +96,13 @@ def test_v142_point_markers_have_no_outline_and_model_selector_is_wired():
 
 
 def test_v15_global_initial_view_and_service_selection_do_not_auto_zoom():
-    assert 'const GLOBAL_VIEW={lon:100,lat:20,height:30000000}' in HTML
+    assert 'const GLOBAL_VIEW={lon:100,lat:20,height:24000000}' in HTML
     assert 'function flyGlobal(instant=false)' in HTML
     assert 'state.viewer.camera.setView({destination})' in HTML
     assert 'await applyEarthSource();applyEarthDisplay();flyGlobal(true)' in HTML
-    assert 'await runAnalysis();flyGlobal(true)' in HTML
+    assert 'await refreshPreview();flyGlobal(true)' in HTML
+    bootstrap = HTML[HTML.index('async function bootstrap(){'):]
+    assert 'await runAnalysis()' not in bootstrap
     assert "$('applyServiceBtn').addEventListener('click',()=>applyServiceSelection(false))" in HTML
     assert 'updatePresetStates();applyServiceSelection(false)' in HTML
     assert "$('globalView').addEventListener('click',()=>flyGlobal(false))" in HTML
@@ -87,9 +110,9 @@ def test_v15_global_initial_view_and_service_selection_do_not_auto_zoom():
 
 
 def test_v110_brand_and_walker_defaults_are_consistent():
-    assert '<title>Test Orbit Designer V1.1.0</title>' in HTML
+    assert '<title>Test Orbit Designer V1.2.0</title>' in HTML
     assert '<div class="brand">Test Orbit Designer</div>' in HTML
-    assert '<div class="version">V1.1.0 · Orbital Analysis · Render-ready</div>' in HTML
+    assert '<div class="version">V1.2.0 · 위성군 설계 워크스페이스</div>' in HTML
     assert 'id="alt" type="number" value="1280"' in HTML
     assert 'id="planes" type="number" value="8"' in HTML
     assert 'id="spp" type="number" value="16"' in HTML
@@ -102,5 +125,4 @@ def test_v110_orbital_analysis_controls_and_multishell_ui_are_present():
         '/api/multi-shell/simulate', '/api/orbital-geometry', 'function fetchSelectedGeometry',
     ]:
         assert token in HTML
-    assert "$('tradeBtn').disabled=m!=='walker'" in HTML
-
+    assert "$('tradeBtn').disabled=state.analysisBusy||m!=='walker'" in HTML

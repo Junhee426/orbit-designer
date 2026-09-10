@@ -32,3 +32,6 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q
+
+      - name: Check frontend syntax
+        run: uv run python -m scripts.check_frontend

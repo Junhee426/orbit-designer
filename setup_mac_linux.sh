@@ -7,7 +7,7 @@ command -v uv >/dev/null 2>&1 || {
   exit 1
 }
 uv python install 3.12
-uv sync
+uv sync --locked
 uv run pytest
 echo "Environment setup complete. Start with: uv run kleo"
 echo "Optional full-offline Cesium + Natural Earth assets: uv run kleo-bootstrap-assets"

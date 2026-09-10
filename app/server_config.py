@@ -26,6 +26,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class ServerSettings:
+    max_concurrent_jobs: int
     mode: str
     max_satellites: int
     max_tle_satellites: int
@@ -46,9 +47,10 @@ class ServerSettings:
         mode = os.getenv("KLEO_SERVER_MODE", "development").strip().lower() or "development"
         return cls(
             mode=mode,
+            max_concurrent_jobs=_env_int("KLEO_MAX_CONCURRENT_JOBS", 2),
             max_satellites=_env_int("KLEO_MAX_SATELLITES", 4096),
             max_tle_satellites=_env_int("KLEO_MAX_TLE_SATELLITES", 512),
-            max_stations=_env_int("KLEO_MAX_STATIONS", 24),
+            max_stations=_env_int("KLEO_MAX_STATIONS", 64),
             max_coverage_areas=_env_int("KLEO_MAX_COVERAGE_AREAS", 18),
             max_heatmap_points=_env_int("KLEO_MAX_HEATMAP_POINTS", 60),
             max_sim_samples=_env_int("KLEO_MAX_SIM_SAMPLES", 3000),

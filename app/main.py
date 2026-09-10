@@ -4,12 +4,20 @@ import os
 import time
 from typing import List, Literal, Optional
 import uuid
+import hashlib
+import json
+import threading
+from functools import wraps
+from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from .core.models import ConstellationConfig, GroundStation, LinkBudgetConfig, SimulationConfig
 from .core.geometry import walker_orbital_geometry
@@ -20,10 +28,11 @@ from .core.snapshot import tle_snapshot, tle_station_timelines, walker_snapshot
 from .core.service_regions import catalog_payload, resolve_selection
 from .core.tle import SGP4UnavailableError, TLEParseError, parse_tle_text, sgp4_available
 from .server_config import SETTINGS
+from .core.sampling import sample_count
 
 BASE = Path(__file__).resolve().parent
 APP_NAME = "Test Orbit Designer"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
@@ -31,6 +40,13 @@ app = FastAPI(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, exc):
+    # JSON permits some parsers to read NaN; never echo non-finite values into JSONResponse.
+    safe = json.loads(json.dumps(exc.errors(), default=str), parse_constant=lambda value: value)
+    return JSONResponse(status_code=422, content={"detail": safe})
 
 
 @app.middleware("http")
@@ -51,38 +67,85 @@ async def production_headers(request: Request, call_next):
     return response
 
 
-class StationIn(BaseModel):
-    name: str
-    lat_deg: float
-    lon_deg: float
-    min_elevation_deg: float = 20.0
+_COMPUTE_SLOTS = threading.BoundedSemaphore(SETTINGS.max_concurrent_jobs)
 
 
-class CoverageAreaIn(BaseModel):
+def bounded_compute(func):
+    @wraps(func)
+    def wrapped(req):
+        if not _COMPUTE_SLOTS.acquire(blocking=False):
+            raise HTTPException(503, "Server is busy. Please retry after the current analysis finishes.", headers={"Retry-After": "1"})
+        try:
+            result = func(req)
+            if isinstance(result, dict) and ("coverage_summary" in result or "results" in result):
+                inputs = req.model_dump(mode="json")
+                canonical = json.dumps(inputs, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                result["analysis_metadata"] = {
+                    "app_version": APP_VERSION,
+                    "generated_utc": datetime.now(timezone.utc).isoformat(),
+                    "input_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+                    "inputs": inputs,
+                    "availability_basis": "geometric_visibility",
+                    "sampling_method": "left_hold_intervals",
+                    "sampling_note": "Each sampled state applies until the next sample; the exact end time is included. Shorter outages than the time step may be missed.",
+                    "limitations": ["Spherical Earth", "Walker circular two-body plus optional J2 RAAN drift", "No RF/weather/gateway/capacity/failure availability model", "Station-point visibility is not whole-country coverage"],
+                }
+            return result
+        finally:
+            _COMPUTE_SLOTS.release()
+    return wrapped
+
+
+class InputModel(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, validate_default=True)
+
+
+Altitude = Annotated[float, Field(ge=160, le=3000)]
+Inclination = Annotated[float, Field(ge=0, le=180)]
+Planes = Annotated[int, Field(ge=1, le=128)]
+Slots = Annotated[int, Field(ge=1, le=256)]
+
+
+class StationIn(InputModel):
+    name: str = Field(min_length=1, max_length=120)
+    lat_deg: float = Field(ge=-90, le=90)
+    lon_deg: float = Field(ge=-180, le=180)
+    min_elevation_deg: float = Field(20.0, ge=0, le=90)
+
+
+class CoverageAreaIn(InputModel):
     code: str = "CUSTOM"
     name: str = "Service area"
-    lon_min: float
-    lat_min: float
-    lon_max: float
-    lat_max: float
+    lon_min: float = Field(ge=-180, le=180)
+    lat_min: float = Field(ge=-90, le=90)
+    lon_max: float = Field(ge=-180, le=180)
+    lat_max: float = Field(ge=-90, le=90)
 
 
-class ServiceSelectionIn(BaseModel):
+    @model_validator(mode="after")
+    def check_bounds(self):
+        if self.lat_max <= self.lat_min or self.lon_max <= self.lon_min:
+            raise ValueError("Coverage maximum bounds must exceed minimum bounds; split dateline-crossing areas.")
+        return self
+
+
+class ServiceSelectionIn(InputModel):
     country_codes: List[str] = []
     region_codes: List[str] = []
     cities_per_country: int = Field(3, ge=1, le=5)
-    min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
+    min_elevation_deg: float = Field(20.0, ge=0.0, le=90.0)
 
 
-class SimIn(BaseModel):
-    altitude_km: float = 1280.0
-    inclination_deg: float = 42.0
+class SimIn(InputModel):
+    include_routes: bool = False
+    altitude_km: Altitude = 1280.0
+    inclination_deg: Inclination = 42.0
     planes: int = Field(8, ge=1, le=128)
     sats_per_plane: int = Field(16, ge=1, le=256)
-    phasing: int = 1
+    phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
     duration_min: float = Field(120.0, gt=0, le=1440)
-    step_sec: float = Field(60.0, gt=0, le=3600)
+    step_sec: float = Field(60.0, ge=1, le=3600)
     stations: List[StationIn] = [
         StationIn(name="Seoul", lat_deg=37.5665, lon_deg=126.9780, min_elevation_deg=20),
         StationIn(name="Dubai", lat_deg=25.2048, lon_deg=55.2708, min_elevation_deg=20),
@@ -92,24 +155,24 @@ class SimIn(BaseModel):
 
 
 
-class ShellIn(BaseModel):
+class ShellIn(InputModel):
     id: str = "SH1"
     name: str = "Shell 1"
     altitude_km: float = Field(1280.0, ge=160.0, le=3000.0)
     inclination_deg: float = Field(42.0, ge=0.0, le=180.0)
     planes: int = Field(8, ge=1, le=128)
     sats_per_plane: int = Field(16, ge=1, le=256)
-    phasing: int = 1
+    phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
 
 
-class MultiShellSimIn(BaseModel):
+class MultiShellSimIn(InputModel):
     shells: List[ShellIn] = [
         ShellIn(id="SH1", name="Core 1280 km", altitude_km=1280, inclination_deg=42, planes=8, sats_per_plane=16, phasing=1),
         ShellIn(id="SH2", name="High-inclination supplement", altitude_km=600, inclination_deg=70, planes=6, sats_per_plane=12, phasing=1),
     ]
     duration_min: float = Field(120.0, gt=0, le=1440)
-    step_sec: float = Field(60.0, gt=0, le=3600)
+    step_sec: float = Field(60.0, ge=1, le=3600)
     stations: List[StationIn] = [
         StationIn(name="Seoul", lat_deg=37.5665, lon_deg=126.9780, min_elevation_deg=20),
         StationIn(name="Dubai", lat_deg=25.2048, lon_deg=55.2708, min_elevation_deg=20),
@@ -117,20 +180,20 @@ class MultiShellSimIn(BaseModel):
     ]
 
 
-class TLESimIn(BaseModel):
+class TLESimIn(InputModel):
     tle_text: str = Field(min_length=1, max_length=SETTINGS.max_tle_chars)
     start_utc: Optional[str] = None
     duration_min: float = Field(120.0, gt=0, le=1440)
-    step_sec: float = Field(60.0, gt=0, le=3600)
+    step_sec: float = Field(60.0, ge=1, le=3600)
     stations: List[StationIn] = [
         StationIn(name="Seoul", lat_deg=37.5665, lon_deg=126.9780, min_elevation_deg=20),
     ]
 
 
-class SnapshotIn(BaseModel):
+class SnapshotIn(InputModel):
     mode: Literal["walker", "multi_shell", "tle"] = "walker"
     time_sec: float = Field(0.0, ge=0.0, le=604800.0)
-    min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
+    min_elevation_deg: float = Field(20.0, ge=0.0, le=90.0)
     heatmap: bool = True
     heatmap_points: int = Field(28, ge=4, le=80)
     include_orbits: bool = True
@@ -145,11 +208,11 @@ class SnapshotIn(BaseModel):
     ]
 
     # Walker fields
-    altitude_km: float = 1280.0
-    inclination_deg: float = 42.0
+    altitude_km: Altitude = 1280.0
+    inclination_deg: Inclination = 42.0
     planes: int = Field(8, ge=1, le=128)
     sats_per_plane: int = Field(16, ge=1, le=256)
-    phasing: int = 1
+    phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
 
     # Multi-shell Walker fields
@@ -160,36 +223,37 @@ class SnapshotIn(BaseModel):
     start_utc: Optional[str] = None
 
 
-class OrbitalGeometryIn(BaseModel):
+class OrbitalGeometryIn(InputModel):
     mode: Literal["walker", "multi_shell"] = "walker"
     satellite_id: str = Field(min_length=1, max_length=80)
     time_sec: float = Field(0.0, ge=0.0, le=604800.0)
-    min_elevation_deg: float = Field(20.0, ge=-5.0, le=90.0)
+    min_elevation_deg: float = Field(20.0, ge=0.0, le=90.0)
     ground_track_span_min: float = Field(220.0, ge=10.0, le=1440.0)
     ground_track_samples: int = Field(181, ge=24, le=720)
     footprint_samples: int = Field(72, ge=24, le=360)
-    altitude_km: float = 1280.0
-    inclination_deg: float = 42.0
+    altitude_km: Altitude = 1280.0
+    inclination_deg: Inclination = 42.0
     planes: int = Field(8, ge=1, le=128)
     sats_per_plane: int = Field(16, ge=1, le=256)
-    phasing: int = 1
+    phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
     shells: List[ShellIn] = []
 
 
-class TLEParseIn(BaseModel):
+class TLEParseIn(InputModel):
     tle_text: str = Field(min_length=1, max_length=SETTINGS.max_tle_chars)
 
 
-class TradeIn(BaseModel):
-    altitudes_km: List[float] = [1000, 1280, 1500]
-    inclinations_deg: List[float] = [42, 53]
-    planes_list: List[int] = [4, 8]
-    sats_per_plane_list: List[int] = [12, 16]
-    phasing: int = 1
-    duration_min: float = 120.0
-    step_sec: float = 180.0
-    min_availability: float = 0.95
+class TradeIn(InputModel):
+    altitudes_km: List[Altitude] = Field(default=[500, 888, 1280], min_length=1, max_length=64)
+    inclinations_deg: List[Inclination] = Field(default=[42], min_length=1, max_length=64)
+    planes_list: List[Planes] = Field(default=[8, 16], min_length=1, max_length=64)
+    sats_per_plane_list: List[Slots] = Field(default=[16], min_length=1, max_length=64)
+    phasing: int = Field(1, ge=0, le=127)
+    duration_min: float = Field(120.0, gt=0, le=1440)
+    step_sec: float = Field(180.0, ge=1, le=3600)
+    min_availability: float = Field(0.95, ge=0, le=1)
+    j2: bool = True
     stations: List[StationIn] = [
         StationIn(name="Seoul", lat_deg=37.5665, lon_deg=126.9780, min_elevation_deg=20),
         StationIn(name="Dubai", lat_deg=25.2048, lon_deg=55.2708, min_elevation_deg=20),
@@ -253,7 +317,7 @@ def constellation_from(req) -> ConstellationConfig:
 
 
 def _sample_count(duration_min: float, step_sec: float) -> int:
-    return int(math.floor(duration_min * 60.0 / step_sec)) + 1
+    return sample_count(duration_min, step_sec)
 
 
 def _enforce_station_count(stations: List[StationIn]) -> None:
@@ -366,8 +430,11 @@ def server_info():
             "minimum_elevation_footprint": True,
             "tle_sgp4": sgp4_available(),
             "multi_shell_cross_isl": False,
+            "scenario_io": True,
+            "candidate_comparison": True,
         },
         "limits": {
+            "max_concurrent_jobs": SETTINGS.max_concurrent_jobs,
             "max_satellites": SETTINGS.max_satellites,
             "max_tle_satellites": SETTINGS.max_tle_satellites,
             "max_stations": SETTINGS.max_stations,
@@ -419,6 +486,9 @@ def resolve_service_regions(req: ServiceSelectionIn):
     result = resolve_selection(req.country_codes, req.region_codes, req.cities_per_country)
     for station in result["stations"]:
         station["min_elevation_deg"] = req.min_elevation_deg
+    result["limits"] = {"max_stations": SETTINGS.max_stations, "max_coverage_areas": SETTINGS.max_coverage_areas}
+    if len(result["stations"]) > SETTINGS.max_stations:
+        raise HTTPException(413, f"Selected {len(result['stations'])} cities; limit is {SETTINGS.max_stations}. Reduce cities per country or select fewer countries.")
     return result
 
 
@@ -444,15 +514,17 @@ def preset():
 
 
 @app.post("/api/simulate")
+@bounded_compute
 def simulate(req: SimIn):
     satellite_count = _enforce_walker_limits(req)
     _enforce_sim_limits(req, satellite_count)
     c = constellation_from(req)
-    sim = SimulationConfig(c, station_objs(req.stations), req.duration_min, req.step_sec, LinkBudgetConfig())
+    sim = SimulationConfig(c, station_objs(req.stations), req.duration_min, req.step_sec, LinkBudgetConfig(), req.include_routes)
     return run_simulation(sim)
 
 
 @app.post("/api/multi-shell/simulate")
+@bounded_compute
 def simulate_multi_shell(req: MultiShellSimIn):
     count = _enforce_multi_shell_limits(req)
     _enforce_sim_limits(req, count)
@@ -460,6 +532,7 @@ def simulate_multi_shell(req: MultiShellSimIn):
 
 
 @app.post("/api/tle/simulate")
+@bounded_compute
 def simulate_tle(req: TLESimIn):
     _enforce_station_count(req.stations)
     records = _parse_tles_guarded(req.tle_text)
@@ -493,6 +566,7 @@ def parse_tle(req: TLEParseIn):
 
 
 @app.post("/api/snapshot")
+@bounded_compute
 def snapshot(req: SnapshotIn):
     _enforce_station_count(req.stations)
     if len(req.coverage_areas) > SETTINGS.max_coverage_areas:
@@ -552,6 +626,7 @@ def snapshot(req: SnapshotIn):
 
 
 @app.post("/api/orbital-geometry")
+@bounded_compute
 def orbital_geometry(req: OrbitalGeometryIn):
     try:
         common = dict(
@@ -569,6 +644,7 @@ def orbital_geometry(req: OrbitalGeometryIn):
 
 
 @app.post("/api/trade-study")
+@bounded_compute
 def trade(req: TradeIn):
     _enforce_trade_limits(req)
     return {
@@ -582,6 +658,7 @@ def trade(req: TradeIn):
             req.duration_min,
             req.step_sec,
             req.min_availability,
+            j2=req.j2,
         )
     }
 
@@ -589,3 +666,38 @@ def trade(req: TradeIn):
 @app.get("/", response_class=HTMLResponse)
 def root():
     return FileResponse(BASE / "static" / "index.html")
+
+
+class ScenarioIn(InputModel):
+    schema_version: Literal["kleo.scenario.v1"] = "kleo.scenario.v1"
+    name: str = Field("K-LEO scenario", min_length=1, max_length=120)
+    configuration: SnapshotIn
+    selection: ServiceSelectionIn
+    duration_min: float = Field(120, gt=0, le=1440)
+    step_sec: float = Field(60, ge=1, le=3600)
+
+
+@app.post("/api/scenario/validate")
+def validate_scenario(req: ScenarioIn):
+    cfg = req.configuration
+    if cfg.mode == "walker":
+        count = _enforce_walker_limits(cfg, snapshot=True)
+    elif cfg.mode == "multi_shell":
+        count = _enforce_multi_shell_limits(cfg, snapshot=True)
+    else:
+        count = len(_parse_tles_guarded(cfg.tle_text or ""))
+        from .core.snapshot import parse_utc
+        try:
+            parse_utc(cfg.start_utc)
+        except TLEParseError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    _enforce_sim_limits(SimIn(duration_min=req.duration_min, step_sec=req.step_sec, stations=cfg.stations), count)
+    selected = resolve_service_regions(req.selection)
+    # The UI restores country selection. Ensure its regenerated cities fit the workload too.
+    _enforce_sim_limits(SimIn(duration_min=req.duration_min, step_sec=req.step_sec, stations=selected["stations"]), count)
+    req.selection.country_codes = selected["country_codes"]
+    req.selection.region_codes = []
+    req.configuration.stations = [StationIn(**row) for row in selected["stations"]]
+    req.configuration.coverage_areas = [CoverageAreaIn(**row) for row in selected["coverage_areas"]]
+    req.configuration.min_elevation_deg = req.selection.min_elevation_deg
+    return req.model_dump(mode="json")

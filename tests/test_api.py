@@ -12,7 +12,7 @@ def test_health_endpoint_reports_v14():
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["version"] == "1.1.0"
+    assert payload["version"] == "1.2.0"
     assert isinstance(payload["sgp4_available"], bool)
 
 
@@ -55,7 +55,7 @@ def test_tle_parse_api_works_without_requiring_propagation_runtime():
     tle = (
         "VANGUARD 1\n"
         "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n"
-        "2 00005  34.2682 331.5174 1849677 331.7664  19.3264 10.82419157413667"
+        "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667"
     )
     response = client.post("/api/tle/parse", json={"tle_text": tle})
     assert response.status_code == 200
@@ -69,7 +69,7 @@ def test_tle_snapshot_api_runtime_behavior():
     tle = (
         "VANGUARD 1\n"
         "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n"
-        "2 00005  34.2682 331.5174 1849677 331.7664  19.3264 10.82419157413667"
+        "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667"
     )
     response = client.post("/api/snapshot", json={
         "mode": "tle",

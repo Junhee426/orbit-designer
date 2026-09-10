@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 — Reliable visibility analysis and candidate comparison
+
+- Fix sampled outage durations, time-weighted metrics and reconnection counting.
+- Share each propagated state across stations; chunk Heat Map working arrays.
+- Validate finite/ranged inputs and cap concurrent compute requests.
+- Apply direct-LOS horizon consistently and support 64 service points.
+- Serialize playback requests, ignore stale responses and invalidate stale metrics.
+- Add six-candidate comparison, scenario JSON save/load and JSON/CSV result exports.
+- Record calculation conditions and explicitly label geometric visibility.
+- Use the dependency lock in Docker and correct remaining Vanguard reference fixtures.
+
 ## 1.1.0 — Orbital Analysis
 
 - Added selected-satellite Ground Track rendering with dateline-safe segmentation.
