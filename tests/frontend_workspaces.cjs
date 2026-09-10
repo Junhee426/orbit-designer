@@ -3,9 +3,8 @@ const vm = require('vm');
 const assert = require('assert/strict');
 
 const html = fs.readFileSync('app/static/index.html', 'utf8');
-const application = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-  .map(match => match[1]).find(source => source.includes('function startPlayback'));
-assert(application, 'The application script must be available to the behavior harness.');
+const application = fs.readFileSync('app/static/app.js', 'utf8');
+assert(application.includes('function startPlayback'), 'The application script must be available to the behavior harness.');
 
 // Keep the real navigation, request sequencing and summary rendering. Stub only
 // GPU-backed scene operations so these checks also run without a browser.

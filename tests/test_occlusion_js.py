@@ -6,23 +6,23 @@ from pathlib import Path
 import pytest
 
 
-HTML_PATH = Path("app/static/index.html")
+JS_PATH = Path("app/static/app.js")
 
 
 def test_wgs84_horizon_occlusion_function_in_node():
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is not available")
-    html_path = json.dumps(str(HTML_PATH.resolve()))
+    js_path = json.dumps(str(JS_PATH.resolve()))
     script = f"""
 const fs=require('fs');
-const html=fs.readFileSync({html_path},'utf8');
-const start=html.indexOf('function isEarthOccluded(camera,sat)');
-const end=html.indexOf('function updatePointOcclusion()', start);
+const js=fs.readFileSync({js_path},'utf8');
+const start=js.indexOf('function isEarthOccluded');
+const end=js.indexOf('function updatePointOcclusion', start);
 if(start<0||end<0) throw new Error('occlusion function not found');
 let earthOn=true;
 function $(id){{ if(id==='earthOn') return {{checked:earthOn}}; throw new Error(id); }}
-eval(html.slice(start,end));
+eval(js.slice(start,end));
 const R=6378137.0;
 const camera={{x:3*R,y:0,z:0}};
 const front={{x:1.14*R,y:0,z:0}};
