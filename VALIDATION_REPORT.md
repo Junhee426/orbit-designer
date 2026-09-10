@@ -2,6 +2,17 @@
 
 Baseline: Junhee426/kleo `7e4cf61c779db1e19b4512673bd56c02a13160c1`.
 
+## Workspace UI verification — 2026-09-10
+
+- Re-ran the current suite: 91 tests passed with no skips, including 11 workspace behavior checks and the existing 7 frontend behavior checks.
+- Inline JavaScript syntax validation passed. Local verification used `outputs/run_checks.py` with the installed VS Code Electron Node runtime.
+- Explicit UTF-8 decoding in frontend test subprocesses removes Windows CP949 reader-thread failures.
+- Re-ran `python -m scripts.run_validation`: default Walker count 128, multi-shell count 200, and SGP4 reference error 0.00000682 m (within 1 m).
+- Existing browser evidence in `outputs/browser-modes-report.json` covers six comparison rows, multi-shell/TLE preview and analysis, and mobile settings without horizontal overflow or runtime exceptions. Browser checks were not re-run in this completion pass.
+- Remaining diagnostics: Starlette/httpx deprecation warning and an Electron crash-report permission diagnostic; checks exited successfully.
+
+The checks below describe the earlier release verification, not a new packaging or deployment run.
+
 ## Executed checks
 
 | Check | Result |

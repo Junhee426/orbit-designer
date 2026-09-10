@@ -3,11 +3,11 @@ let html=fs.readFileSync('app/static/index.html','utf8');
 let code=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(x=>x[1]).find(x=>x.includes('function startPlayback'));
 const testExports='state,startPlayback,stopPlayback,invalidateAnalysis,applyServiceSelection,runAnalysis,saveScenario,loadScenario,exportResultsCSV,csvCell,recordAnalysis';
 // Bind real UI functions to a deterministic DOM/network harness, without launching a browser.
-code=code.replace('bootstrap();\n})();',`window.testAPI={${testExports}};\n})();`);
+code=code.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/,`window.testAPI={${testExports}};\n})();`);
 function setup(){
   const elements=new Map();let requestImpl=async()=>({ok:true,json:async()=>({})});let timers=[],nextId=1;let captures=[];
   const controls={mode:'walker',dur:'120',step:'60',speed:'1',alt:'1280',inc:'42',planes:'8',spp:'16',phase:'1',j2:'true',minEl:'20',heatRes:'28',citiesPerCountry:'2'};
-  const element=id=>{if(!elements.has(id))elements.set(id,{value:controls[id]??'',textContent:'',innerHTML:'',disabled:false,checked:false,max:'7200',style:{},children:[],addEventListener(){},click(){},querySelector(){return null;}});return elements.get(id);};
+  const element=id=>{if(!elements.has(id))elements.set(id,{value:controls[id]??'',textContent:'',innerHTML:'',disabled:false,checked:false,max:'7200',style:{},children:[],setAttribute(){},addEventListener(){},click(){},querySelector(){return null;}});return elements.get(id);};
   const document={getElementById:element,querySelectorAll:()=>[],addEventListener(){},createElement:()=>({click(){}})};
   const context=vm.createContext({window:{},document,console,AbortController,Blob,URL:{createObjectURL:b=>{captures.push(b);return 'blob:test';},revokeObjectURL(){}},setTimeout:(fn,ms)=>{const id=nextId++;timers.push({id,fn,ms});return id;},clearTimeout:id=>{timers=timers.filter(x=>x.id!==id);},Plotly:{purge(){}},fetch:(...args)=>requestImpl(...args)});
   vm.runInContext(code,context);
