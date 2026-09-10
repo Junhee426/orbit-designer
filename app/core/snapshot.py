@@ -235,25 +235,8 @@ def tle_station_timelines(
 
     timelines = []
     for item in by_station:
-        counts = np.asarray(item["visible_counts"], dtype=int)
-        handovers = 0
-        prev = None
-        for sat_id in item["best_ids"]:
-            if sat_id is None:
-                continue
-            if prev is not None and sat_id != prev:
-                handovers += 1
-            prev = sat_id
-        duration_hr = (times[-1] - times[0]) / 3600.0 if len(times) > 1 else 0.0
-        max_run = cur = 0
-        for c in counts:
-            if c == 0:
-                cur += 1
-                max_run = max(max_run, cur)
-            else:
-                cur = 0
         st = item["station"]
-        timelines.append({
+        row = {
             "name": st.name,
             "lat_deg": st.lat_deg,
             "lon_deg": st.lon_deg,
@@ -263,16 +246,9 @@ def tle_station_timelines(
             "best_elevation_deg": item["best_elevation"],
             "best_satellite_ids": item["best_ids"],
             "best_slant_range_km": item["ranges"],
-            "availability": float(np.mean(counts > 0)) if len(counts) else 0.0,
-            "avg_visible": float(np.mean(counts)) if len(counts) else 0.0,
-            "max_visible": int(counts.max()) if len(counts) else 0,
-            "handover_count": int(handovers),
-            "handovers_per_hour": float(handovers / duration_hr) if duration_hr > 0 else 0.0,
-            "max_sampled_outage_sec": float(max_run * step_sec),
-        })
-
-    for row in timelines:
+        }
         row.update(sampled_metrics(row["best_satellite_ids"], row["visible_counts"], times))
+        timelines.append(row)
 
     summary = {
         "mean_availability": float(np.mean([x["availability"] for x in timelines])) if timelines else 0.0,

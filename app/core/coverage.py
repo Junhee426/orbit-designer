@@ -7,11 +7,6 @@ from .constants import C_KM_S
 from .sampling import sampled_metrics
 
 
-def _handover_stats(best_indices, visible_counts, times_sec):
-    m = sampled_metrics(best_indices, visible_counts, times_sec)
-    return m["handover_count"], m["handovers_per_hour"], m["max_sampled_outage_sec"]
-
-
 def timelines_from_states(stations, times_sec, ids, state_at_time):
     """Propagate once per time step and release positions after all stations."""
     rows = [dict(name=st.name, lat_deg=st.lat_deg, lon_deg=st.lon_deg,

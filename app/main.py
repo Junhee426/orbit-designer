@@ -29,10 +29,11 @@ from .core.service_regions import catalog_payload, resolve_selection
 from .core.tle import SGP4UnavailableError, TLEParseError, parse_tle_text, sgp4_available
 from .server_config import SETTINGS
 from .core.sampling import sample_count
+from . import __version__
 
 BASE = Path(__file__).resolve().parent
 APP_NAME = "Test Orbit Designer"
-APP_VERSION = "1.2.0"
+APP_VERSION = __version__
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
@@ -140,8 +141,8 @@ class SimIn(InputModel):
     include_routes: bool = False
     altitude_km: Altitude = 1280.0
     inclination_deg: Inclination = 42.0
-    planes: int = Field(8, ge=1, le=128)
-    sats_per_plane: int = Field(16, ge=1, le=256)
+    planes: Planes = 8
+    sats_per_plane: Slots = 16
     phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
     duration_min: float = Field(120.0, gt=0, le=1440)
@@ -158,10 +159,10 @@ class SimIn(InputModel):
 class ShellIn(InputModel):
     id: str = "SH1"
     name: str = "Shell 1"
-    altitude_km: float = Field(1280.0, ge=160.0, le=3000.0)
-    inclination_deg: float = Field(42.0, ge=0.0, le=180.0)
-    planes: int = Field(8, ge=1, le=128)
-    sats_per_plane: int = Field(16, ge=1, le=256)
+    altitude_km: Altitude = 1280.0
+    inclination_deg: Inclination = 42.0
+    planes: Planes = 8
+    sats_per_plane: Slots = 16
     phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
 
@@ -210,8 +211,8 @@ class SnapshotIn(InputModel):
     # Walker fields
     altitude_km: Altitude = 1280.0
     inclination_deg: Inclination = 42.0
-    planes: int = Field(8, ge=1, le=128)
-    sats_per_plane: int = Field(16, ge=1, le=256)
+    planes: Planes = 8
+    sats_per_plane: Slots = 16
     phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
 
@@ -233,8 +234,8 @@ class OrbitalGeometryIn(InputModel):
     footprint_samples: int = Field(72, ge=24, le=360)
     altitude_km: Altitude = 1280.0
     inclination_deg: Inclination = 42.0
-    planes: int = Field(8, ge=1, le=128)
-    sats_per_plane: int = Field(16, ge=1, le=256)
+    planes: Planes = 8
+    sats_per_plane: Slots = 16
     phasing: int = Field(1, ge=0, le=127)
     j2: bool = True
     shells: List[ShellIn] = []
@@ -280,22 +281,25 @@ def shell_cfgs(items: List[ShellIn]):
     return result
 
 
+def _enforce_snapshot_workload(req, count: int) -> None:
+    areas = list(getattr(req, "coverage_areas", []) or [])
+    if len(areas) > SETTINGS.max_coverage_areas:
+        raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
+    hp = int(getattr(req, "heatmap_points", 0) or 0)
+    if hp > SETTINGS.max_heatmap_points:
+        raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
+    if bool(getattr(req, "heatmap", False)):
+        work = count * hp * hp * max(1, len(areas))
+        if work > SETTINGS.max_snapshot_work:
+            raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+
+
 def _enforce_multi_shell_limits(req, *, snapshot: bool = False) -> int:
     shells = shell_cfgs(req.shells)
     count = sum(x[2].total_satellites for x in shells)
-    stations = list(getattr(req, "stations", []) or [])
-    _enforce_station_count(stations)
+    _enforce_station_count(list(getattr(req, "stations", []) or []))
     if snapshot:
-        areas = list(getattr(req, "coverage_areas", []) or [])
-        if len(areas) > SETTINGS.max_coverage_areas:
-            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
-        hp = int(getattr(req, "heatmap_points", 0) or 0)
-        if hp > SETTINGS.max_heatmap_points:
-            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
-        if bool(getattr(req, "heatmap", False)):
-            work = count * hp * hp * max(1, len(areas))
-            if work > SETTINGS.max_snapshot_work:
-                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+        _enforce_snapshot_workload(req, count)
     return count
 
 
@@ -304,8 +308,6 @@ def station_objs(items):
 
 
 def constellation_from(req) -> ConstellationConfig:
-    if req.altitude_km < 160 or req.altitude_km > 3000:
-        raise HTTPException(400, "This LEO-focused Walker mode supports 160-3000 km altitude.")
     return ConstellationConfig(
         req.altitude_km,
         req.inclination_deg,
@@ -314,10 +316,6 @@ def constellation_from(req) -> ConstellationConfig:
         req.phasing,
         req.j2,
     )
-
-
-def _sample_count(duration_min: float, step_sec: float) -> int:
-    return sample_count(duration_min, step_sec)
 
 
 def _enforce_station_count(stations: List[StationIn]) -> None:
@@ -329,25 +327,14 @@ def _enforce_walker_limits(req, *, snapshot: bool = False) -> int:
     count = int(req.planes) * int(req.sats_per_plane)
     if count > SETTINGS.max_satellites:
         raise HTTPException(413, f"Constellation has {count} satellites; server limit is {SETTINGS.max_satellites}.")
-    stations = list(getattr(req, "stations", []) or [])
-    _enforce_station_count(stations)
+    _enforce_station_count(list(getattr(req, "stations", []) or []))
     if snapshot:
-        areas = list(getattr(req, "coverage_areas", []) or [])
-        if len(areas) > SETTINGS.max_coverage_areas:
-            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
-        hp = int(getattr(req, "heatmap_points", 0) or 0)
-        if hp > SETTINGS.max_heatmap_points:
-            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
-        if bool(getattr(req, "heatmap", False)):
-            area_count = max(1, len(areas))
-            work = count * hp * hp * area_count
-            if work > SETTINGS.max_snapshot_work:
-                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+        _enforce_snapshot_workload(req, count)
     return count
 
 
 def _enforce_sim_limits(req, satellite_count: int) -> None:
-    samples = _sample_count(float(req.duration_min), float(req.step_sec))
+    samples = sample_count(float(req.duration_min), float(req.step_sec))
     if samples > SETTINGS.max_sim_samples:
         raise HTTPException(413, f"Simulation has {samples} time samples; server limit is {SETTINGS.max_sim_samples}.")
     station_count = max(1, len(req.stations))
@@ -377,7 +364,7 @@ def _enforce_trade_limits(req: TradeIn) -> None:
     if cases > SETTINGS.max_trade_cases:
         raise HTTPException(413, f"Trade study has {cases} cases; server limit is {SETTINGS.max_trade_cases}.")
     _enforce_station_count(req.stations)
-    samples = _sample_count(float(req.duration_min), float(req.step_sec))
+    samples = sample_count(float(req.duration_min), float(req.step_sec))
     if samples > SETTINGS.max_sim_samples:
         raise HTTPException(413, f"Trade study has {samples} time samples per case; server limit is {SETTINGS.max_sim_samples}.")
     total_work = 0
@@ -569,20 +556,12 @@ def parse_tle(req: TLEParseIn):
 @bounded_compute
 def snapshot(req: SnapshotIn):
     _enforce_station_count(req.stations)
-    if len(req.coverage_areas) > SETTINGS.max_coverage_areas:
-        raise HTTPException(413, f"Too many coverage areas: {len(req.coverage_areas)} > {SETTINGS.max_coverage_areas}.")
-    if req.heatmap_points > SETTINGS.max_heatmap_points:
-        raise HTTPException(413, f"Heat-map resolution {req.heatmap_points} exceeds server limit {SETTINGS.max_heatmap_points}.")
     try:
         if req.mode == "tle":
             if not req.tle_text:
                 raise HTTPException(400, "TLE mode requires tle_text.")
             records = _parse_tles_guarded(req.tle_text)
-            if req.heatmap:
-                area_count = max(1, len(req.coverage_areas))
-                work = len(records) * req.heatmap_points * req.heatmap_points * area_count
-                if work > SETTINGS.max_snapshot_work:
-                    raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+            _enforce_snapshot_workload(req, len(records))
             return tle_snapshot(
                 req.tle_text,
                 req.start_utc,

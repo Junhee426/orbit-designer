@@ -8,38 +8,6 @@ from .isl import active_isl_edges
 from .constellation import satellite_ids
 
 
-def _dijkstra(n_nodes, adjacency, sources, targets):
-    dist = [float('inf')] * n_nodes
-    prev = [None] * n_nodes
-    pq = []
-    for s, cost in sources:
-        if cost < dist[s]:
-            dist[s] = cost
-            heapq.heappush(pq, (cost, s))
-    target_set = set(targets)
-    final = None
-    while pq:
-        d, u = heapq.heappop(pq)
-        if d != dist[u]:
-            continue
-        if u in target_set:
-            final = u
-            break
-        for v, w in adjacency[u]:
-            nd = d + w
-            if nd < dist[v]:
-                dist[v] = nd
-                prev[v] = u
-                heapq.heappush(pq, (nd, v))
-    if final is None:
-        return None, None, None
-    path = [final]
-    while prev[path[-1]] is not None:
-        path.append(prev[path[-1]])
-    path.reverse()
-    return dist[final], path, final
-
-
 def minimum_station_pair_route(cfg: ConstellationConfig, positions_eci: np.ndarray, positions_ecef: np.ndarray,
                                a: GroundStation, b: GroundStation):
     """Minimum propagation-time path at a snapshot.

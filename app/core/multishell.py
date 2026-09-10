@@ -8,9 +8,8 @@ from .constellation import satellite_positions_eci, satellite_ids
 from .coverage import timelines_from_states, summarize_timelines
 from .sampling import sample_times
 from .geometry import walker_orbital_geometry
-from .ground import elevation_and_range
 from .heatmap import instantaneous_coverage_heatmaps
-from .models import ConstellationConfig, GroundStation
+from .models import ConstellationConfig
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_rad_s, j2_raan_rate_rad_s
 from .visualization import access_links, walker_isl_links, walker_orbit_paths
 
@@ -75,11 +74,6 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
     return {"mode":"multi_shell","time_sec":float(t_sec),"satellites":satellites,"heatmap":heatmaps[0] if heatmaps else None,"heatmaps":heatmaps,
             "shells":[{"id":normalize_shell_id(x[0],i),"name":x[1],**x[2].to_dict()} for i,x in enumerate(shells)],
             "visualization":{"orbits":orbit_paths,"isl_links":isl_links,"access_links":access_links(pos_ecef,ids,st) if include_access and st else []},"errors":[]}
-
-
-def multi_shell_station_timeline(shells, station: GroundStation, times_sec: np.ndarray):
-    ids = combined_state(shells, 0.0)[0]
-    return timelines_from_states([station], times_sec, ids, lambda t: combined_state(shells, t)[3])[0]
 
 
 def run_multi_shell_simulation(shells, stations, duration_min: float, step_sec: float):
