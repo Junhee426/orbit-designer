@@ -17,3 +17,9 @@ body[data-workspace="analysis"] #settingsPanel>section[data-view="analysis"]:nth
 @media(max-width:960px){.scenario-mobile{display:flex}}
 @media(max-width:680px){.settings-toggle{display:flex;width:100%;justify-content:space-between;background:#14263b}.sidebar{padding:12px 16px}#settingsPanel[data-expanded="false"]{display:none}#settingsPanel[data-expanded="true"]{padding-top:18px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+.service-visibility { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px; font-size: 12px; }
+.service-visibility strong { color: #48d4f0; }
+.service-visibility small { flex-basis: 100%; opacity: .7; }
+.service-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #697586; }
+.service-dot.active { width: 9px; height: 9px; background: #48d4f0; box-shadow: 0 0 6px #48d4f080; }
+.service-dot.selected { background: #ffe26a; }

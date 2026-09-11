@@ -144,6 +144,34 @@ function setup(controlOverrides = {}) {
 async function run() {
   let checks = 0;
 
+  // Service highlighting survives layer/style changes and updates in place with time.
+  {
+    const h = setup({ accessOn: 'false' });
+    const sat = (id, active) => ({ id, name: id, ecef_x_km: 7500, ecef_y_km: 0, ecef_z_km: 0, service_visible: active });
+    h.api.reconcileSatellites([sat('A', true), sat('B', false)]);
+    const a = h.api.state.satEntities.get('A'), b = h.api.state.satEntities.get('B');
+    assert.ok(a.point.pixelSize > b.point.pixelSize);
+    assert.equal(b.point.color.alpha, .45);
+    assert.equal(h.element('serviceVisibleCount').textContent, '1 / 2기');
+    h.element('satRender').value = 'model';
+    h.element('satSize').value = '2';
+    h.api.updateSatelliteStyles();
+    assert.ok(a.model.minimumPixelSize > b.model.minimumPixelSize);
+    assert.equal(a.model.silhouetteSize, 1.5);
+    h.api.state.selectedId = 'B';
+    h.api.updateSatelliteStyles();
+    assert.equal(b.point.color.tag, h.Cesium.Color.YELLOW.tag);
+    h.api.state.selectedId = null;
+    h.api.reconcileSatellites([sat('A', false), sat('B', true)]);
+    assert.equal(h.api.state.satEntities.get('A'), a);
+    assert.ok(b.point.pixelSize > a.point.pixelSize);
+    assert.equal(a.model.silhouetteSize, 0);
+    h.api.reconcileSatellites([sat('A', false)]);
+    assert.equal(h.element('serviceVisibleCount').textContent, '0 / 1기');
+    assert.equal(h.api.state.satEntities.has('B'), false);
+    checks++;
+  }
+
   // 1. Satellite point markers must render through Earth (disableDepthTestDistance:0),
   //    not force through it (Number.POSITIVE_INFINITY), and carry no outline.
   {

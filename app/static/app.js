@@ -826,11 +826,9 @@
       e.model.uri = modelUri;
       e.point.disableDepthTestDistance = 0;
       e.label.disableDepthTestDistance = 0;
-      e.model.minimumPixelSize = 7 * sz;
-      e.point.pixelSize = 4.5 * sz;
       e.label.show = model && id === state.selectedId
     }
-    updatePointOcclusion()
+    highlightSelection()
   }
 
   function reconcileSatellites(sats) {
@@ -882,6 +880,7 @@
         e.label.text = s.name
       }
       e._kleoBaseColor = base;
+      e._kleoServiceVisible = s.service_visible === true;
       e._kleoPointColor = pointBase
     }
     for (const [id, e] of [...state.satEntities])
@@ -889,15 +888,21 @@
         state.viewer.entities.remove(e);
         state.satEntities.delete(id)
       } updateSatelliteStyles();
-    highlightSelection()
+    $('serviceVisibleCount').textContent = `${sats.filter(s => s.service_visible === true).length} / ${sats.length}기`;
   }
 
   function highlightSelection() {
+    const sz = satVisualSize();
     for (const [id, e] of state.satEntities) {
       const sel = id === state.selectedId;
-      e.model.silhouetteSize = sel ? 2.5 : 0;
-      e.model.color = sel ? Cesium.Color.fromCssColorString('#ffe26a') : (e._kleoBaseColor || Cesium.Color.WHITE);
-      e.point.color = sel ? Cesium.Color.YELLOW : (e._kleoPointColor || Cesium.Color.CYAN)
+      const active = e._kleoServiceVisible;
+      const muted = Cesium.Color.fromCssColorString('#697586').withAlpha(.45);
+      e.model.minimumPixelSize = (sel ? 11 : active ? 9 : 5) * sz;
+      e.point.pixelSize = (sel ? 8 : active ? 6 : 3) * sz;
+      e.model.silhouetteColor = sel ? Cesium.Color.YELLOW : Cesium.Color.CYAN;
+      e.model.silhouetteSize = sel ? 2.5 : active ? 1.5 : 0;
+      e.model.color = sel ? Cesium.Color.fromCssColorString('#ffe26a') : active ? (e._kleoBaseColor || Cesium.Color.WHITE) : muted;
+      e.point.color = sel ? Cesium.Color.YELLOW : active ? (e._kleoPointColor || Cesium.Color.CYAN) : muted
     }
     updatePointOcclusion()
   }
@@ -1073,6 +1078,7 @@
     }
     $('satDetails').className = '';
     let h = `<div class="sat-title">${esc(s.name)}</div><div class="sat-source">${esc(s.source)} · ${esc(s.id)}</div><div class="props">`;
+    h += prop('서비스 가시성', s.service_visible ? `가능 · ${s.service_station_count}개 관측 도시` : '조건 미충족');
     h += prop('위도', num(s.lat_deg, 4, '°')) + prop('경도', num(s.lon_deg, 4, '°')) + prop('고도', num(s.altitude_km, 2, ' km')) + prop('속도', num(s.speed_km_s, 3, ' km/s')) + prop('경사각', num(s.inclination_deg, 4, '°')) + prop('RAAN', num(s.raan_deg, 4, '°')) + prop('공전 주기', num(s.period_min, 3, ' min'));
     if (s.source === 'Walker' || s.source === 'Multi-shell Walker') {
       if (s.shell_id) h += prop('Shell', `${s.shell_id} · ${s.shell_name||''}`);

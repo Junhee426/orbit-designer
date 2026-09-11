@@ -13,7 +13,7 @@ from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_ra
 from .ground import elevation_and_range
 from .sampling import sample_times, sampled_metrics
 from .visualization import (
-    access_links, nearest_neighbor_isl_links, tle_orbit_paths,
+    access_links, annotate_service_visibility, nearest_neighbor_isl_links, tle_orbit_paths,
     walker_isl_links, walker_orbit_paths,
 )
 from .tle import TLERecord, altitude_km as tle_altitude_km, parse_tle_text, propagate_tles
@@ -94,6 +94,7 @@ def walker_snapshot(
     heatmaps = instantaneous_coverage_heatmaps(pos_ecef, coverage_areas, min_elevation_deg, heatmap_points) if heatmap else []
     hm = heatmaps[0] if heatmaps else None
     station_list = list(stations or [])
+    annotate_service_visibility(satellites, pos_ecef, station_list)
     viz = {
         "orbits": walker_orbit_paths(cfg, t_sec, orbit_samples) if include_orbits else [],
         "isl_links": walker_isl_links(cfg, pos_eci, pos_ecef, ids) if include_isl else [],
@@ -175,6 +176,7 @@ def tle_snapshot(
     hm = heatmaps[0] if heatmaps else None
     ids = [f"NORAD-{rec.norad_id}" for rec in records]
     station_list = list(stations or [])
+    annotate_service_visibility(satellites, ecef, station_list)
     viz = {
         "orbits": tle_orbit_paths(records, when, orbit_samples) if include_orbits else [],
         "isl_links": nearest_neighbor_isl_links(p, ecef, ids) if include_isl else [],

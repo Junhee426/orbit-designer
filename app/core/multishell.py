@@ -11,7 +11,7 @@ from .geometry import walker_orbital_geometry
 from .heatmap import instantaneous_coverage_heatmaps
 from .models import ConstellationConfig
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_rad_s, j2_raan_rate_rad_s
-from .visualization import access_links, walker_isl_links, walker_orbit_paths
+from .visualization import access_links, annotate_service_visibility, walker_isl_links, walker_orbit_paths
 
 
 def normalize_shell_id(value: str, index: int) -> str:
@@ -71,6 +71,7 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
         offset+=count
     heatmaps=instantaneous_coverage_heatmaps(pos_ecef,coverage_areas,min_elevation_deg,heatmap_points) if heatmap and len(pos_ecef) else []
     st=list(stations or [])
+    annotate_service_visibility(satellites, pos_ecef, st)
     return {"mode":"multi_shell","time_sec":float(t_sec),"satellites":satellites,"heatmap":heatmaps[0] if heatmaps else None,"heatmaps":heatmaps,
             "shells":[{"id":normalize_shell_id(x[0],i),"name":x[1],**x[2].to_dict()} for i,x in enumerate(shells)],
             "visualization":{"orbits":orbit_paths,"isl_links":isl_links,"access_links":access_links(pos_ecef,ids,st) if include_access and st else []},"errors":[]}
