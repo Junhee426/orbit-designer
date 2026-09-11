@@ -145,3 +145,37 @@ def test_scenario_invalid_tle_timestamp_is_a_client_error():
     tle=Path('examples/vanguard1_verification.tle').read_text()
     r=client.post('/api/scenario/validate',json={'configuration':{'mode':'tle','tle_text':tle,'start_utc':'not-a-date'},'selection':{'country_codes':['KOR']}})
     assert r.status_code==400
+
+
+@pytest.mark.parametrize('mode', ['walker', 'multi_shell', 'tle'])
+def test_scenario_checks_heatmap_work_after_resolving_selection(monkeypatch, mode):
+    from dataclasses import replace
+    from pathlib import Path
+    import app.main as main
+
+    monkeypatch.setattr(main, 'SETTINGS', replace(SETTINGS, max_snapshot_work=1000))
+    configuration = dict(
+        mode=mode, planes=1, sats_per_plane=1, heatmap=True, heatmap_points=28,
+        shells=[dict(planes=1, sats_per_plane=1)],
+        tle_text=Path('examples/vanguard1_verification.tle').read_text(),
+    )
+    payload = dict(configuration=configuration,
+                   selection=dict(country_codes=['KOR'], cities_per_country=1),
+                   duration_min=1, step_sec=60)
+    accepted = client.post('/api/scenario/validate', json=payload)
+    assert accepted.status_code == 200
+    payload['selection']['country_codes'].append('JPN')
+    rejected = client.post('/api/scenario/validate', json=payload)
+    assert rejected.status_code == 413
+    assert 'Snapshot workload' in rejected.json()['detail']
+
+
+def test_tle_scenario_checks_snapshot_resolution_limit():
+    from pathlib import Path
+
+    response = client.post('/api/scenario/validate', json=dict(
+        configuration=dict(mode='tle', heatmap_points=SETTINGS.max_heatmap_points + 1,
+                           tle_text=Path('examples/vanguard1_verification.tle').read_text()),
+        selection=dict(country_codes=['KOR']),
+    ))
+    assert response.status_code == 413

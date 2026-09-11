@@ -665,6 +665,8 @@ def validate_scenario(req: ScenarioIn):
         count = _enforce_multi_shell_limits(cfg, snapshot=True)
     else:
         count = len(_parse_tles_guarded(cfg.tle_text or ""))
+        _enforce_station_count(cfg.stations)
+        _enforce_snapshot_workload(cfg, count)
         from .core.snapshot import parse_utc
         try:
             parse_utc(cfg.start_utc)
@@ -679,4 +681,6 @@ def validate_scenario(req: ScenarioIn):
     req.configuration.stations = [StationIn(**row) for row in selected["stations"]]
     req.configuration.coverage_areas = [CoverageAreaIn(**row) for row in selected["coverage_areas"]]
     req.configuration.min_elevation_deg = req.selection.min_elevation_deg
+    # Country selection replaces the coverage areas, so check the final snapshot too.
+    _enforce_snapshot_workload(req.configuration, count)
     return req.model_dump(mode="json")

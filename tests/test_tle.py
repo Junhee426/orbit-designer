@@ -31,6 +31,30 @@ def test_parse_two_line_group_without_name():
     assert rec.name == "SAT-00005"
 
 
+@pytest.mark.parametrize("line_index,start,end,value", [
+    (1, 20, 32, "NaN"),
+    (1, 20, 32, "Inf"),
+    (1, 20, 32, "1e99"),
+    (2, 8, 16, "NaN"),
+    (2, 17, 25, "Inf"),
+    (2, 34, 42, "NaN"),
+    (2, 43, 51, "-Inf"),
+    (2, 52, 63, "NaN"),
+    (2, 52, 63, "Inf"),
+])
+def test_invalid_tle_numbers_return_client_error(line_index, start, end, value):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    lines = TLE_TEXT.splitlines()
+    line = lines[line_index]
+    lines[line_index] = line[:start] + value.rjust(end - start) + line[end:]
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.post("/api/tle/parse", json={"tle_text": "\n".join(lines)})
+    assert response.status_code == 400
+    assert response.json()["detail"]
+
+
 def test_sgp4_adapter_wiring_with_fake_runtime(monkeypatch):
     class FakeSat:
         @classmethod
