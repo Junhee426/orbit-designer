@@ -61,6 +61,9 @@
     <div class="field"><label for="satSize">위성 크기</label><div class="range-line"><input id="satSize" type="range" min="0.5" max="8" step="0.25" value="2"><span id="satSizeValue" class="range-value">2.00×</span></div></div>
     <div class="field"><label for="satRender">위성 표시 방식</label><select id="satRender"><option value="model">3D 모델</option><option value="point">점 마커</option></select></div>
     <div class="field"><label for="satModel">위성 모델</label><select id="satModel"><option value="default">K-LEO 기본</option><option value="compact">Compact bus</option><option value="broadband">Broadband communications</option><option value="flatpanel">Flat-panel payload</option></select></div>
+    <label class="check"><input id="serviceOnly" type="checkbox">서비스 가능 위성만 보기</label>
+    <button id="nextServiceSatellite" type="button" disabled>다음 서비스 위성 선택</button>
+    <p class="note">현재 최소 고도각을 충족하는 위성을 순서대로 선택하고 지도에서 찾아봅니다.</p>
     <label class="check"><input id="orbitOn" type="checkbox" checked>궤도선</label>
     <label class="check"><input id="groundTrackOn" type="checkbox" checked>선택 위성의 지상 궤적</label><label class="check"><input id="footprintOn" type="checkbox" checked>선택 위성의 풋프린트</label>
     <div class="field"><label for="trackSpan">지상 궤적 시간 범위</label><div class="range-line"><input id="trackSpan" type="range" min="30" max="720" step="10" value="220"><span id="trackSpanValue" class="range-value">220 min</span></div></div><p class="note">지상 궤적과 풋프린트는 Walker / Multi-shell의 선택 위성에 표시됩니다.</p>

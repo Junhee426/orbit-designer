@@ -16,6 +16,7 @@ const testExports = [
   'renderAccess', 'flyServiceArea', 'pointInGeometry', 'ensureBoundaryData',
   'loadServiceCatalog', 'fetchSelectedGeometry', 'runAnalysis', 'setModeUI',
   'initShells', 'addShell', 'shellPayloads', 'snapshotPayload', 'bind',
+  'selectNextServiceSatellite', 'sliderChanged',
 ].join(',');
 const code = source.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/, `window.testAPI={${testExports}};\n})();`);
 assert.notEqual(code, source, 'The harness must suppress the real startup call.');
@@ -99,8 +100,15 @@ function setup(controlOverrides = {}) {
     },
     HeadingPitchRoll: class { constructor(h, p, r) { this.h = h; this.p = p; this.r = r; } },
     Transforms: { headingPitchRollQuaternion: (pos, hpr) => ({ pos, hpr }) },
-    PolylineCollection: class { constructor() { this.items = []; } add(spec) { this.items.push(spec); cesiumCalls.push(['polyline', spec]); } },
-    Material: { fromType: (type, opts) => ({ type, opts }) },
+    PolylineCollection: class {
+      constructor() { this.items = []; }
+      get length() { return this.items.length; }
+      get(i) { return this.items[i]; }
+      remove(line) { this.items.splice(this.items.indexOf(line), 1); }
+      add(spec) { this.items.push(spec); cesiumCalls.push(['polyline', spec]); return spec; }
+    },
+    Material: { fromType: (type, opts) => ({ type, opts, uniforms: opts }) },
+    HeadingPitchRange: class {}, Math: { toRadians: x => x * Math.PI / 180 },
     Rectangle: { fromDegrees: (a, b, c, d) => ({ a, b, c, d }), MAX_VALUE: 'RECT_MAX' },
     ArcGisMapServerImageryProvider: { fromUrl: async (url, opts) => ({ tag: 'arcgis', url, opts }) },
     SingleTileImageryProvider: { fromUrl: async (url, opts) => ({ tag: 'single', url, opts }) },
@@ -108,6 +116,7 @@ function setup(controlOverrides = {}) {
   };
   const entitiesAdded = [];
   const viewer = {
+    flyTo(entity) { cesiumCalls.push(['flyToEntity', entity]); },
     camera: {
       positionWC: { x: 3 * 6378137.0, y: 0, z: 0 },
       setView(opts) { cesiumCalls.push(['setView', opts]); },
@@ -143,6 +152,80 @@ function setup(controlOverrides = {}) {
 
 async function run() {
   let checks = 0;
+
+  // Stable layers retain their line/material objects over 120 playback updates.
+  {
+    const h = setup();
+    const makeLinks = (frame, count) => Array.from({ length: count }, (_, i) => ({
+      a_ecef_km: [7000, i, frame], b_ecef_km: [7100, i + 1, frame],
+    }));
+    h.api.renderIsl({ isl_links: makeLinks(0, 512) });
+    const collection = h.api.state.islCollection;
+    const first = collection.get(0), material = first.material;
+    for (let frame = 1; frame < 120; frame++) h.api.renderIsl({ isl_links: makeLinks(frame, 512) });
+    assert.equal(h.api.state.islCollection, collection);
+    assert.equal(collection.get(0), first);
+    assert.equal(first.material, material);
+    assert.equal(first.positions[0].z, 119000);
+    assert.equal(h.cesiumCalls.filter(x => x[0] === 'polyline').length, 512);
+    h.api.renderIsl({ isl_links: makeLinks(120, 2) });
+    assert.equal(collection.length, 2);
+    h.api.renderIsl({ isl_links: makeLinks(121, 3) });
+    assert.equal(collection.length, 3);
+    h.api.renderIsl({ isl_links: [] });
+    assert.equal(h.api.state.islCollection, null);
+    console.log('512 links × 120 updates: 512 line creations (previously 61,440)');
+    checks++;
+  }
+
+  // Service-only is local, applies to both render modes and follows new snapshots.
+  {
+    const h = setup();
+    const sat = (id, active) => ({ id, name: id, source: 'Walker', ecef_x_km: 7500, ecef_y_km: 0, ecef_z_km: 0,
+      service_visible: active, service_station_count: active ? 1 : 0 });
+    const satellites = [sat('A', true), sat('B', false), sat('C', true)];
+    h.api.state.snapshot = { satellites };
+    h.api.reconcileSatellites(satellites);
+    h.element('serviceOnly').checked = true;
+    h.api.updateSatelliteStyles();
+    assert.equal(h.api.state.satEntities.get('B').show, false);
+    assert.equal(h.api.state.satEntities.get('A').show, true);
+    h.element('satRender').value = 'model';
+    h.api.updateSatelliteStyles();
+    assert.equal(h.api.state.satEntities.get('B').show, false);
+    h.api.selectNextServiceSatellite();
+    assert.equal(h.api.state.selectedId, 'A');
+    h.api.selectNextServiceSatellite();
+    assert.equal(h.api.state.selectedId, 'C');
+    h.api.selectNextServiceSatellite();
+    assert.equal(h.api.state.selectedId, 'A');
+    assert.equal(h.cesiumCalls.filter(x => x[0] === 'flyToEntity').length, 3);
+    satellites[0].service_visible = false;
+    satellites[2].service_visible = false;
+    h.api.reconcileSatellites(satellites);
+    assert.equal(h.api.state.satEntities.get('A').show, false);
+    assert.equal(h.element('nextServiceSatellite').disabled, true);
+    h.api.selectNextServiceSatellite();
+    assert.equal(h.cesiumCalls.filter(x => x[0] === 'flyToEntity').length, 3);
+    h.element('serviceOnly').checked = false;
+    h.api.updateSatelliteStyles();
+    assert.equal(h.api.state.satEntities.get('B').show, true);
+    assert.equal(h.requests.length, 0);
+    checks++;
+  }
+
+  // Dragging invalidates an old response before the debounce expires.
+  {
+    const h = setup();
+    const controller = new AbortController();
+    h.api.state.snapshotController = controller;
+    const seq = h.api.state.snapshotSeq;
+    h.api.sliderChanged();
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(h.api.state.snapshotSeq, seq + 1);
+    clearTimeout(h.api.state.sliderDebounce);
+    checks++;
+  }
 
   // Service highlighting survives layer/style changes and updates in place with time.
   {

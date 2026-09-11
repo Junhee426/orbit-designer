@@ -822,6 +822,7 @@
     $('satSizeValue').textContent = sz.toFixed(2) + '×';
     $('satModel').disabled = !model;
     for (const [id, e] of state.satEntities) {
+      e.show = !$('serviceOnly').checked || e._kleoServiceVisible === true;
       e.model.show = model;
       e.model.uri = modelUri;
       e.point.disableDepthTestDistance = 0;
@@ -889,14 +890,15 @@
         state.satEntities.delete(id)
       } updateSatelliteStyles();
     $('serviceVisibleCount').textContent = `${sats.filter(s => s.service_visible === true).length} / ${sats.length}기`;
+    $('nextServiceSatellite').disabled = !sats.some(s => s.service_visible === true && state.satEntities.has(s.id));
   }
 
   function highlightSelection() {
     const sz = satVisualSize();
+    const muted = Cesium.Color.fromCssColorString('#697586').withAlpha(.45);
     for (const [id, e] of state.satEntities) {
       const sel = id === state.selectedId;
       const active = e._kleoServiceVisible;
-      const muted = Cesium.Color.fromCssColorString('#697586').withAlpha(.45);
       e.model.minimumPixelSize = (sel ? 11 : active ? 9 : 5) * sz;
       e.point.pixelSize = (sel ? 8 : active ? 6 : 3) * sz;
       e.model.silhouetteColor = sel ? Cesium.Color.YELLOW : Cesium.Color.CYAN;
@@ -915,35 +917,45 @@
   }
 
   function renderOrbits(viz) {
-    clearPrimitive('orbitCollection');
     const paths = viz?.orbits || [];
     $('statOrbit').textContent = paths.length;
-    if (!$('orbitOn').checked || !paths.length) return;
-    const c = new Cesium.PolylineCollection();
-    for (const p of paths) c.add({
+    updateLineCollection('orbitCollection', $('orbitOn').checked ? paths : [], p => ({
       positions: p.ecef_km.map(ecefCart),
       width: 1.25,
-      material: Cesium.Material.fromType('Color', {
-        color: p.shell_id ? shellColor(p.shell_id, .7) : Cesium.Color.fromCssColorString('#5d83a7').withAlpha(.62)
-      })
-    });
-    state.orbitCollection = state.viewer.scene.primitives.add(c)
+      color: p.shell_id ? shellColor(p.shell_id, .7) : Cesium.Color.fromCssColorString('#5d83a7').withAlpha(.62)
+    }))
+  }
+
+  function updateLineCollection(name, rows, style) {
+    if (!rows.length) {
+      clearPrimitive(name);
+      return;
+    }
+    let collection = state[name];
+    if (!collection) collection = state[name] = state.viewer.scene.primitives.add(new Cesium.PolylineCollection());
+    for (let i = 0; i < rows.length; i++) {
+      const spec = style(rows[i]);
+      if (i < collection.length) {
+        const line = collection.get(i);
+        line.positions = spec.positions;
+        line.width = spec.width;
+        line.material.uniforms.color = spec.color;
+      } else {
+        collection.add({ positions: spec.positions, width: spec.width,
+          material: Cesium.Material.fromType('Color', { color: spec.color }) });
+      }
+    }
+    while (collection.length > rows.length) collection.remove(collection.get(collection.length - 1));
   }
 
   function renderIsl(viz) {
-    clearPrimitive('islCollection');
     const links = viz?.isl_links || [];
     $('statIsl').textContent = links.length;
-    if (!$('islOn').checked || !links.length) return;
-    const c = new Cesium.PolylineCollection();
-    for (const l of links) c.add({
+    updateLineCollection('islCollection', $('islOn').checked ? links : [], l => ({
       positions: [ecefCart(l.a_ecef_km), ecefCart(l.b_ecef_km)],
       width: 1.1,
-      material: Cesium.Material.fromType('Color', {
-        color: l.shell_id ? shellColor(l.shell_id, .58) : Cesium.Color.fromCssColorString('#b88cff').withAlpha(.62)
-      })
-    });
-    state.islCollection = state.viewer.scene.primitives.add(c)
+      color: l.shell_id ? shellColor(l.shell_id, .58) : Cesium.Color.fromCssColorString('#b88cff').withAlpha(.62)
+    }))
   }
 
   function reconcileGroundStations(viz) {
@@ -980,20 +992,14 @@
   }
 
   function renderAccess(viz) {
-    clearPrimitive('accessCollection');
     const links = (viz?.access_links || []).filter(x => x.visible);
     $('statAccess').textContent = links.length;
     reconcileGroundStations(viz);
-    if (!$('accessOn').checked || !links.length) return;
-    const c = new Cesium.PolylineCollection();
-    for (const l of links) c.add({
+    updateLineCollection('accessCollection', $('accessOn').checked ? links : [], l => ({
       positions: [ecefCart(l.station_ecef_km), ecefCart(l.satellite_ecef_km)],
       width: 2,
-      material: Cesium.Material.fromType('Color', {
-        color: Cesium.Color.fromCssColorString('#60e8a3').withAlpha(.9)
-      })
-    });
-    state.accessCollection = state.viewer.scene.primitives.add(c)
+      color: Cesium.Color.fromCssColorString('#60e8a3').withAlpha(.9)
+    }))
   }
 
   function heatColor(v, max) {
@@ -1455,6 +1461,8 @@
 
   function sliderChanged() {
     stopPlayback();
+    state.snapshotSeq++;
+    state.snapshotController?.abort();
     const v = +$('timeSlider').value;
     $('timeLabel').textContent = fmtTime(v);
     clearTimeout(state.sliderDebounce);
@@ -1495,6 +1503,17 @@
 
   function refetchLayers() {
     if (state.snapshot) fetchSnapshot(+$('timeSlider').value, true)
+  }
+
+  function selectNextServiceSatellite() {
+    const candidates = (state.snapshot?.satellites || []).filter(s => s.service_visible && state.satEntities.has(s.id));
+    if (!candidates.length) return;
+    const index = candidates.findIndex(s => s.id === state.selectedId);
+    state.selectedId = candidates[(index + 1) % candidates.length].id;
+    highlightSelection();
+    renderSelected();
+    fetchSelectedGeometry(true);
+    flySelected();
   }
 
   function bind() {
@@ -1543,6 +1562,8 @@
     $('earthOpacity').addEventListener('input', applyEarthDisplay);
     $('satSize').addEventListener('input', updateSatelliteStyles);
     $('satRender').addEventListener('change', updateSatelliteStyles);
+    $('serviceOnly').addEventListener('change', updateSatelliteStyles);
+    $('nextServiceSatellite').addEventListener('click', selectNextServiceSatellite);
     $('satModel').addEventListener('change', updateSatelliteStyles);
     for (const id of ['orbitOn', 'islOn', 'accessOn', 'coverageOn']) $(id).addEventListener('change', refetchLayers);
     for (const id of ['groundTrackOn', 'footprintOn']) $(id).addEventListener('change', () => fetchSelectedGeometry(true));
