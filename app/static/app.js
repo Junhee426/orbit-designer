@@ -56,18 +56,33 @@
     }
   }
 
-  function shellPayloads() {
-    return [...document.querySelectorAll('.shell-card')].map(shellCardData)
+  function shellPayloads(validate = false) {
+    const cards = [...document.querySelectorAll('.shell-card')];
+    if (validate) {
+      if (!cards.length) throw new Error('궤도층을 하나 이상 추가하세요.');
+      for (const [index, card] of cards.entries()) {
+        const invalid = [...card.querySelectorAll('input')].find(input => !input.checkValidity());
+        if (invalid) {
+          setWorkspace('orbit');
+          setSettingsExpanded(true);
+          invalid.focus();
+          invalid.reportValidity();
+          throw new Error(`${index + 1}번 궤도층의 ${invalid.getAttribute('aria-label')} 입력값을 확인하세요.`);
+        }
+      }
+    }
+    return cards.map(shellCardData)
   }
 
   function updateShellSummary() {
     const shells = shellPayloads(),
       total = shells.reduce((a, x) => a + x.planes * x.sats_per_plane, 0);
-    $('shellSummary').textContent = `${shells.length} shell(s) · ${total} satellites`;
+    $('shellSummary').textContent = `${shells.length}개 궤도층 · 총 ${Number.isFinite(total) ? total.toLocaleString('ko-KR') : '–'}기`;
     for (const c of document.querySelectorAll('.shell-card')) {
       const d = shellCardData(c),
         e = c.querySelector('.shell-total');
-      if (e) e.textContent = `${d.planes} × ${d.sats_per_plane} = ${d.planes*d.sats_per_plane} satellites`
+      if (e) e.textContent = `${d.planes}개 궤도면 × ${d.sats_per_plane}기 = ${Number.isFinite(d.planes*d.sats_per_plane) ? d.planes*d.sats_per_plane : '–'}기`;
+      c.querySelector('.sh-remove').disabled = shells.length <= 1;
     }
   }
 
@@ -80,14 +95,33 @@
       card = document.createElement('div');
     card.className = 'shell-card';
     card.dataset.shellId = id;
-    card.innerHTML = `<div class="shell-card-head"><input class="sh-name" value="${esc(shell.name||`Shell ${idx}`)}" aria-label="shell name"><button class="sh-remove" type="button">삭제</button></div><div class="row"><div class="field"><label>고도 · km</label><input class="sh-alt" type="number" min="160" max="3000" value="${shell.altitude_km??1280}"></div><div class="field"><label>경사각 · °</label><input class="sh-inc" type="number" min="0" max="180" step="0.1" value="${shell.inclination_deg??42}"></div></div><div class="row"><div class="field"><label>궤도면 수</label><input class="sh-planes" type="number" min="1" max="128" value="${shell.planes??8}"></div><div class="field"><label>궤도면당 위성 수</label><input class="sh-spp" type="number" min="1" max="256" value="${shell.sats_per_plane??16}"></div></div><div class="row"><div class="field"><label>Walker F</label><input class="sh-phase" type="number" value="${shell.phasing??1}"></div><div class="field"><label>J2 RAAN drift</label><select class="sh-j2"><option value="true" ${(shell.j2??true)?'selected':''}>On</option><option value="false" ${shell.j2===false?'selected':''}>Off</option></select></div></div><div class="shell-total"></div>`;
-    card.querySelector('.sh-remove').addEventListener('click', () => {
-      card.remove();
-      updateShellSummary()
+    const numberField = (cls, label, value, min, max, step = 1) => `<div class="field"><label>${label}<input class="${cls}" aria-label="${label}" type="number" required min="${min}" max="${max}" step="${step}" value="${esc(value)}"></label></div>`;
+    card.innerHTML = `
+      <div class="shell-card-head"><span class="shell-id">${esc(id)}</span><div class="shell-actions"><button class="sh-copy" type="button">복제</button><button class="sh-remove" type="button">삭제</button></div></div>
+      <div class="field"><label>궤도층 이름<input class="sh-name" value="${esc(shell.name||`궤도층 ${idx}`)}" aria-label="궤도층 이름"></label></div>
+      <div class="row">${numberField('sh-alt', '고도 · km', shell.altitude_km??1280, 160, 3000, 'any')}${numberField('sh-inc', '경사각 · °', shell.inclination_deg??42, 0, 180, 'any')}</div>
+      <div class="row">${numberField('sh-planes', '궤도면 수', shell.planes??8, 1, 128)}${numberField('sh-spp', '면당 위성 수', shell.sats_per_plane??16, 1, 256)}</div>
+      <div class="row">${numberField('sh-phase', 'Walker 위상 · F', shell.phasing??1, 0, 127)}<div class="field"><label>J2 승교점 이동<select class="sh-j2" aria-label="J2 승교점 이동"><option value="true" ${(shell.j2??true)?'selected':''}>사용</option><option value="false" ${shell.j2===false?'selected':''}>사용 안 함</option></select></label></div></div>
+      <div class="shell-total"></div>`;
+    card.querySelector('.sh-copy').addEventListener('click', () => {
+      const copy = shellCardData(card);
+      const added = addShell({...copy, id: undefined, name: `${copy.name} 복사`});
+      invalidateAnalysis();
+      invalidatePreview();
+      added.querySelector('.sh-name').focus();
     });
-    for (const e of card.querySelectorAll('input,select')) e.addEventListener('change', updateShellSummary);
+    card.querySelector('.sh-remove').addEventListener('click', () => {
+      if (document.querySelectorAll('.shell-card').length <= 1) return;
+      card.remove();
+      updateShellSummary();
+      invalidateAnalysis();
+      invalidatePreview();
+      $('addShellBtn').focus();
+    });
+    for (const e of card.querySelectorAll('input,select')) e.addEventListener('input', updateShellSummary);
     $('shellList').appendChild(card);
-    updateShellSummary()
+    updateShellSummary();
+    return card;
   }
 
   function initShells() {
@@ -168,7 +202,7 @@
     if (mode() === 'walker') $('analysisConfig').textContent = `Walker-Delta · ${$('alt').value} km · 경사각 ${$('inc').value}° · ${$('planes').value}개 궤도면 × ${$('spp').value}기`;
     else if (mode() === 'multi_shell') {
       const shells = shellPayloads();
-      $('analysisConfig').textContent = `Multi-shell · ${shells.length}개 shell · 총 ${shells.reduce((n,s)=>n+s.planes*s.sats_per_plane,0)}기`;
+      $('analysisConfig').textContent = `다층 궤도 · ${shells.length}개 층 · 총 ${shells.reduce((n,s)=>n+s.planes*s.sats_per_plane,0)}기`;
     } else $('analysisConfig').textContent = 'TLE / SGP4 · 입력한 TLE 데이터 기준';
   }
 
@@ -590,7 +624,7 @@
 
   function multiShellPayload() {
     return {
-      shells: shellPayloads(),
+      shells: shellPayloads(true),
       duration_min: +$('dur').value,
       step_sec: +$('step').value,
       stations: stations()
@@ -618,7 +652,7 @@
     };
     if (mode() === 'multi_shell') return {
       ...base,
-      shells: shellPayloads()
+      shells: shellPayloads(true)
     };
     const w = walkerPayload();
     return {
@@ -1459,7 +1493,18 @@
 
   function bind() {
     $('mode').addEventListener('change', setModeUI);
-    $('addShellBtn').addEventListener('click', () => addShell({}));
+    $('openMultiShellBtn').addEventListener('click', () => {
+      $('mode').value = 'multi_shell';
+      setModeUI();
+      setSettingsExpanded(true);
+      $('shellList').querySelector('.sh-name')?.focus();
+    });
+    $('addShellBtn').addEventListener('click', () => {
+      const card = addShell({});
+      invalidateAnalysis();
+      invalidatePreview();
+      card.querySelector('.sh-name').focus();
+    });
     $('runBtn').addEventListener('click', runAnalysis);
     $('tradeBtn').addEventListener('click', runTrade);
     $('tleParseBtn').addEventListener('click', parseTLE);
@@ -1687,16 +1732,6 @@
       const orbit = ['alt', 'inc', 'planes', 'spp', 'phase', 'j2', 'tleText', 'startUtc'].includes(e.target.id) || e.target.closest('.shell-card');
       if (orbit || ['dur', 'step'].includes(e.target.id)) invalidateAnalysis();
       if (orbit) invalidatePreview();
-    });
-    $('shellList').addEventListener('click', e => {
-      if (e.target.classList.contains('sh-remove')) {
-        invalidateAnalysis();
-        invalidatePreview();
-      }
-    });
-    $('addShellBtn').addEventListener('click', () => {
-      invalidateAnalysis();
-      invalidatePreview();
     });
   }
 

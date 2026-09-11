@@ -15,12 +15,14 @@ const testExports = [
   'applyEarthDisplay', 'applyEarthSource', 'renderOrbits', 'renderIsl',
   'renderAccess', 'flyServiceArea', 'pointInGeometry', 'ensureBoundaryData',
   'loadServiceCatalog', 'fetchSelectedGeometry', 'runAnalysis', 'setModeUI',
+  'initShells', 'addShell', 'shellPayloads', 'snapshotPayload', 'bind',
 ].join(',');
 const code = source.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/, `window.testAPI={${testExports}};\n})();`);
 assert.notEqual(code, source, 'The harness must suppress the real startup call.');
 
 function setup(controlOverrides = {}) {
   const elements = new Map();
+  const cards = [];
   const requests = [];
   let requestImpl = async () => { throw new Error('Unexpected fetch call'); };
   const controls = {
@@ -35,19 +37,53 @@ function setup(controlOverrides = {}) {
     if (!elements.has(id)) {
       elements.set(id, {
         value: controls[id] ?? '', textContent: '', innerHTML: '', disabled: false,
-        checked: checked.has(id), style: {}, className: '', children: [],
-        setAttribute() {}, addEventListener() {}, click() {},
+        checked: checked.has(id), style: {}, dataset: {}, className: '', children: [],
+        listeners: {}, attributes: {}, focused: false,
+        setAttribute(name, value) { this.attributes[name] = value; },
+        getAttribute(name) { return this.attributes[name]; }, removeAttribute(name) { delete this.attributes[name]; },
+        addEventListener(name, fn) { (this.listeners[name] ??= []).push(fn); },
+        click() { if (!this.disabled) for (const fn of this.listeners.click ?? []) fn(); },
+        focus() { this.focused = true; },
         querySelector() { return null; }, querySelectorAll() { return []; },
       });
     }
     return elements.get(id);
   };
+  element('shellList').appendChild = card => { cards.push(card); element('shellList').children = cards; };
+  element('shellList').querySelector = selector => cards[0]?.querySelector(selector);
+  function createCard() {
+    const fields = new Map();
+    return {
+      dataset: {}, className: '',
+      set innerHTML(html) {
+        for (const match of html.matchAll(/<(input|select|button)\b([^>]*)>/g)) {
+          const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)].map(m => [m[1], m[2]]));
+          const field = element(`card-${elements.size}-${attrs.class}`);
+          field.attributes = attrs;
+          field.tag = match[1];
+          field.value = attrs.value ?? '';
+          if (field.tag === 'select') field.value = /value="false" selected/.test(html) ? 'false' : 'true';
+          field.checkValidity = () => attrs.type !== 'number' || (
+            field.value.trim() !== '' && Number.isFinite(+field.value) &&
+            +field.value >= +attrs.min && +field.value <= +attrs.max &&
+            (attrs.step === 'any' || Number.isInteger(+field.value)));
+          field.reportValidity = () => { field.reported = true; };
+          fields.set(`.${attrs.class}`, field);
+        }
+        fields.set('.shell-total', { textContent: '' });
+      },
+      querySelector: selector => fields.get(selector),
+      querySelectorAll: selector => [...fields.values()].filter(f => selector.split(',').includes(f.tag)),
+      remove() { cards.splice(cards.indexOf(this), 1); },
+    };
+  }
   const document = {
+    body: element('body'),
     getElementById: element,
-    querySelectorAll: () => [],
+    querySelectorAll: selector => selector === '.shell-card' ? cards : [],
     querySelector: () => null,
     addEventListener() {},
-    createElement: () => ({ style: {}, classList: { add() {}, remove() {} } }),
+    createElement: tag => tag === 'div' ? createCard() : ({ style: {}, classList: { add() {}, remove() {} } }),
   };
   const cesiumCalls = [];
   const makeColor = tag => ({ tag, withAlpha(a) { return { ...this, alpha: a }; } });
@@ -92,7 +128,7 @@ function setup(controlOverrides = {}) {
     dataSources: { add: async ds => ds, remove() {} },
   };
   const context = vm.createContext({
-    window: {}, document, console, Cesium, AbortController,
+    window: {}, document, console, Cesium, AbortController, requestAnimationFrame() {},
     fetch: (url, options) => { requests.push({ url, options }); return requestImpl(url, options); },
     setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id),
   });
@@ -100,7 +136,7 @@ function setup(controlOverrides = {}) {
   const api = context.window.testAPI;
   api.state.viewer = viewer;
   return {
-    api, element, viewer, requests, cesiumCalls, entitiesAdded, Cesium,
+    api, element, viewer, requests, cesiumCalls, entitiesAdded, Cesium, cards,
     setFetch(fn) { requestImpl = fn; },
   };
 }
@@ -329,9 +365,62 @@ async function run() {
   // 13. Multi-shell mode runs analysis against the multi-shell endpoint.
   {
     const h = setup({ mode: 'multi_shell' });
+    h.api.initShells();
     h.setFetch(async url => ({ ok: true, json: async () => ({ coverage_summary: { worst_availability: 1 }, station_timelines: [] }) }));
     await h.api.runAnalysis();
     assert.deepEqual(h.requests.map(r => r.url), ['/api/multi-shell/simulate']);
+    checks++;
+  }
+
+  // Layer editor actions preserve parameters and IDs through preview and analysis.
+  {
+    const h = setup({ mode: 'walker' });
+    h.api.initShells();
+    h.api.bind();
+    h.element('openMultiShellBtn').click();
+    assert.equal(h.element('mode').value, 'multi_shell');
+    assert.equal(h.element('multiShellFields').style.display, 'block');
+    assert.equal(h.element('settingsPanel').dataset.expanded, 'true');
+    assert.equal(h.element('shellSummary').textContent, '2개 궤도층 · 총 200기');
+    const first = h.cards[0];
+    first.querySelector('.sh-alt').value = '888.5';
+    first.querySelector('.sh-j2').value = 'false';
+    first.querySelector('.sh-copy').click();
+    assert.equal(h.cards.length, 3);
+    assert.equal(h.cards[2].dataset.shellId, 'SH3');
+    assert.equal(h.api.shellPayloads(true)[2].altitude_km, 888.5);
+    assert.equal(h.api.shellPayloads(true)[2].j2, false);
+    assert.equal(h.api.state.previewDirty, true);
+    const snapshot = h.api.snapshotPayload(60);
+    assert.equal(snapshot.mode, 'multi_shell');
+    assert.equal(snapshot.shells.length, 3);
+    h.setFetch(async (url, options) => {
+      assert.deepEqual(JSON.parse(options.body).shells, JSON.parse(JSON.stringify(snapshot.shells)));
+      return { ok: false, json: async () => ({ detail: 'test response' }) };
+    });
+    await h.api.runAnalysis();
+    assert.equal(h.requests[0].url, '/api/multi-shell/simulate');
+    h.cards[1].querySelector('.sh-remove').click();
+    h.element('addShellBtn').click();
+    assert.equal(h.cards[2].dataset.shellId, 'SH2', 'Deleted IDs can be reused without duplicates');
+    while (h.cards.length > 1) h.cards[1].querySelector('.sh-remove').click();
+    assert.equal(first.querySelector('.sh-remove').disabled, true);
+    first.querySelector('.sh-remove').click();
+    assert.equal(h.cards.length, 1);
+    checks++;
+  }
+
+  // Invalid layer fields cannot issue an analysis request and focus the offending field.
+  for (const [selector, value] of [['.sh-alt', ''], ['.sh-inc', '181'], ['.sh-planes', '1.5'], ['.sh-phase', '-1']]) {
+    const h = setup({ mode: 'multi_shell' });
+    h.api.initShells();
+    const input = h.cards[0].querySelector(selector);
+    input.value = value;
+    await h.api.runAnalysis();
+    assert.equal(h.requests.length, 0);
+    assert.equal(input.focused, true);
+    assert.equal(input.reported, true);
+    assert.match(h.element('status').textContent, /입력값을 확인/);
     checks++;
   }
 

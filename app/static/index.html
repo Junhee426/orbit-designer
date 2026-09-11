@@ -22,13 +22,21 @@
   <div id="settingsPanel">
   <section class="section" data-view="orbit">
     <h3><span class="section-number">01</span>위성군 구성</h3>
-    <div class="field"><label for="mode">궤도 모델</label><select id="mode"><option value="walker">Walker-Delta</option><option value="multi_shell">Multi-shell Walker</option><option value="tle">TLE / SGP4</option></select></div>
+    <div class="field"><label for="mode">궤도 모델</label><select id="mode"><option value="walker">단일 궤도 · Walker-Delta</option><option value="multi_shell">다층 궤도 · Multi-shell Walker</option><option value="tle">TLE / SGP4</option></select></div>
     <div id="walkerFields">
       <div class="row"><div class="field"><label for="alt">고도 · km</label><input id="alt" type="number" value="1280" min="160" max="3000"></div><div class="field"><label for="inc">경사각 · °</label><input id="inc" type="number" value="42" min="0" max="180" step="0.1"></div></div>
       <div class="row"><div class="field"><label for="planes">궤도면 수</label><input id="planes" type="number" value="8" min="1" max="128"></div><div class="field"><label for="spp">궤도면당 위성 수</label><input id="spp" type="number" value="16" min="1" max="256"></div></div>
       <div class="row"><div class="field"><label for="phase">Walker 위상 · F</label><input id="phase" type="number" value="1"></div><div class="field"><label for="j2">J2 승교점 이동</label><select id="j2"><option value="true">사용</option><option value="false">사용 안 함</option></select></div></div>
+      <button id="openMultiShellBtn" class="wide" type="button">다층 궤도 입력 열기 ↗</button>
+      <p class="note">여러 고도·경사각의 위성군을 함께 구성하려면 다층 궤도를 선택하세요.</p>
     </div>
-    <div id="multiShellFields" class="multi-only"><div id="shellList" class="shell-list"></div><div class="btns"><button id="addShellBtn" type="button">+ Shell 추가</button></div><div id="shellSummary" class="note"></div></div>
+    <div id="multiShellFields" class="multi-only">
+      <p class="note">층마다 고도와 경사각, 위성 수를 입력하세요. 기본 2개 층에서 시작해 추가하거나 복제할 수 있습니다.</p>
+      <div id="shellSummary" class="context-summary" role="status" aria-live="polite"></div>
+      <div id="shellList" class="shell-list"></div>
+      <div class="btns"><button id="addShellBtn" class="wide" type="button">+ 궤도층 추가</button></div>
+      <p class="note">입력 후 아래의 «궤도 배치 적용»을 누르세요. 상세 분석은 모든 층을 합산하며, 위성 간 통신은 같은 층 내부만 지원합니다.</p>
+    </div>
     <div id="tleFields" class="tle-only"><div class="field"><label for="tleText">TLE 데이터</label><textarea id="tleText"></textarea></div><div class="field"><label for="startUtc">시작 UTC · 비우면 최신 TLE epoch</label><input id="startUtc" placeholder="2026-08-19T00:00:00Z"></div><div class="btns"><button id="tleExampleBtn">예제 입력</button><button id="tleParseBtn">TLE 확인</button></div><div id="tleMeta" class="note"></div></div>
     <div class="btns"><button class="primary wide" id="previewBtn" disabled>궤도 배치 적용</button></div>
     <p class="note">설정을 적용하면 현재 시각의 위성 위치와 궤도를 갱신합니다.</p>
