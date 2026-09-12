@@ -546,7 +546,7 @@ def simulate_tle(req: TLESimIn):
     records = _parse_tles_guarded(req.tle_text)
     _enforce_sim_limits(req, len(records))
     try:
-        return tle_station_timelines(req.tle_text, req.start_utc, station_objs(req.stations), req.duration_min, req.step_sec)
+        return tle_station_timelines(req.tle_text, req.start_utc, station_objs(req.stations), req.duration_min, req.step_sec, records=records)
     except (SGP4UnavailableError, TLEParseError) as exc:
         _tle_error(exc)
 

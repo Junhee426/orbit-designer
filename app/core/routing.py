@@ -8,20 +8,30 @@ from .isl import active_isl_edges
 from .constellation import satellite_ids
 
 
+def _isl_adjacency(cfg: ConstellationConfig, positions_eci: np.ndarray):
+    edges = active_isl_edges(cfg, positions_eci)
+    adjacency = [[] for _ in range(len(positions_eci))]
+    for e in edges:
+        w = e['propagation_ms']
+        adjacency[e['a']].append((e['b'], w))
+        adjacency[e['b']].append((e['a'], w))
+    return adjacency
+
+
 def minimum_station_pair_route(cfg: ConstellationConfig, positions_eci: np.ndarray, positions_ecef: np.ndarray,
-                               a: GroundStation, b: GroundStation):
+                               a: GroundStation, b: GroundStation, adjacency=None, ids=None):
     """Minimum propagation-time path at a snapshot.
 
     Access links are station<->visible satellite; backbone uses active candidate ISLs.
     Processing/queuing delays are intentionally excluded, so result is a physical lower bound.
     """
-    edges = active_isl_edges(cfg, positions_eci)
+    # ISL graph and satellite IDs depend only on (cfg, positions_eci), not on the station pair, so
+    # all_station_pair_routes builds them once per snapshot instead of once per station pair.
+    if adjacency is None:
+        adjacency = _isl_adjacency(cfg, positions_eci)
+    if ids is None:
+        ids = satellite_ids(cfg)
     n = len(positions_eci)
-    adjacency = [[] for _ in range(n)]
-    for e in edges:
-        w = e['propagation_ms']
-        adjacency[e['a']].append((e['b'], w))
-        adjacency[e['b']].append((e['a'], w))
 
     elev_a, rng_a = elevation_and_range(positions_ecef, a)
     elev_b, rng_b = elevation_and_range(positions_ecef, b)
@@ -58,7 +68,6 @@ def minimum_station_pair_route(cfg: ConstellationConfig, positions_eci: np.ndarr
     while prev[path[-1]] is not None:
         path.append(prev[path[-1]])
     path.reverse()
-    ids=satellite_ids(cfg)
     return {
         'from': a.name,
         'to': b.name,
@@ -72,9 +81,11 @@ def minimum_station_pair_route(cfg: ConstellationConfig, positions_eci: np.ndarr
 
 
 def all_station_pair_routes(cfg, positions_eci, positions_ecef, stations):
+    adjacency = _isl_adjacency(cfg, positions_eci)
+    ids = satellite_ids(cfg)
     out=[]
     for a,b in itertools.combinations(stations,2):
-        r=minimum_station_pair_route(cfg,positions_eci,positions_ecef,a,b)
+        r=minimum_station_pair_route(cfg,positions_eci,positions_ecef,a,b,adjacency,ids)
         if r is not None:
             out.append(r)
     return out

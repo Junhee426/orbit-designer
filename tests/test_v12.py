@@ -44,11 +44,21 @@ def test_reconnect_is_not_handover_and_irregular_end_is_weighted():
 def test_shared_propagation_once_per_time(monkeypatch):
     import app.core.coverage as mod
     original=mod.satellite_positions_eci;calls=[]
-    def counted(cfg,t):
-        calls.append(t);return original(cfg,t)
+    def counted(cfg,t,elements=None):
+        calls.append(t);return original(cfg,t,elements)
     monkeypatch.setattr(mod,'satellite_positions_eci',counted)
     multi_station_summary(ConstellationConfig(),[GroundStation('A',0,0),GroundStation('B',30,40)],np.array([0.,60.,120.]))
     assert calls==[0,60,120]
+
+
+def test_walker_elements_computed_once_per_summary(monkeypatch):
+    import app.core.coverage as mod
+    original=mod.walker_elements;calls=[]
+    def counted(cfg):
+        calls.append(cfg);return original(cfg)
+    monkeypatch.setattr(mod,'walker_elements',counted)
+    multi_station_summary(ConstellationConfig(),[GroundStation('A',0,0),GroundStation('B',30,40)],np.array([0.,60.,120.]))
+    assert len(calls)==1
 
 
 def test_chunked_heatmap_matches_independent_dense_geometry():

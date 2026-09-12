@@ -1,7 +1,7 @@
 from typing import Dict, List
 import numpy as np
 from .models import ConstellationConfig, GroundStation
-from .constellation import satellite_positions_eci, satellite_ids
+from .constellation import satellite_positions_eci, satellite_ids, walker_elements
 from .orbit import eci_to_ecef
 from .ground import elevation_and_range
 from .constants import C_KM_S
@@ -51,6 +51,9 @@ def station_timeline(cfg: ConstellationConfig, station: GroundStation, times_sec
 
 
 def multi_station_summary(cfg: ConstellationConfig, stations: List[GroundStation], times_sec: np.ndarray):
-    timelines = timelines_from_states(stations, times_sec, satellite_ids(cfg),
-        lambda t: eci_to_ecef(satellite_positions_eci(cfg, t), t))
+    # Walker elements (plane/slot RAAN and initial argument of latitude) depend only on cfg, not
+    # on t, so they're computed once here instead of once per timestep inside the per-t lambda.
+    elements = walker_elements(cfg)
+    timelines = timelines_from_states(stations, times_sec, satellite_ids(cfg, elements),
+        lambda t: eci_to_ecef(satellite_positions_eci(cfg, t, elements), t))
     return timelines, summarize_timelines(timelines)
