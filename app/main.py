@@ -27,6 +27,12 @@ from .core.simulation import run_simulation
 from .core.snapshot import tle_snapshot, tle_station_timelines, walker_snapshot
 from .core.service_regions import catalog_payload, resolve_selection
 from .core.tle import SGP4UnavailableError, TLEParseError, parse_tle_text, sgp4_available
+from .core.lifetime import (
+    DEFAULT_AREA_TO_MASS_M2_PER_KG,
+    DEFAULT_DRAG_COEFFICIENT,
+    DEFAULT_REENTRY_ALTITUDE_KM,
+    orbital_lifetime_estimate,
+)
 from .server_config import SETTINGS
 from .core.sampling import sample_count
 
@@ -67,7 +73,7 @@ async def production_headers(request: Request, call_next):
     return response
 
 
-_COMPUTE_SLOTS = threading.BoundedSemaphore(SETTINGS.max_concurrent_jobs)
+_COMPUTE_SLOTS = threading.BoundedSemaphore(SETTINGS.max_concurrent_jobs_per_worker)
 
 
 def bounded_compute(func):
@@ -244,6 +250,13 @@ class TLEParseIn(InputModel):
     tle_text: str = Field(min_length=1, max_length=SETTINGS.max_tle_chars)
 
 
+class OrbitLifetimeIn(InputModel):
+    altitude_km: Altitude = 550.0
+    drag_coefficient: float = Field(DEFAULT_DRAG_COEFFICIENT, gt=0, le=5)
+    area_to_mass_m2_per_kg: float = Field(DEFAULT_AREA_TO_MASS_M2_PER_KG, gt=0, le=1)
+    reentry_altitude_km: float = Field(DEFAULT_REENTRY_ALTITUDE_KM, ge=100, le=300)
+
+
 class TradeIn(InputModel):
     altitudes_km: List[Altitude] = Field(default=[500, 888, 1280], min_length=1, max_length=64)
     inclinations_deg: List[Inclination] = Field(default=[42], min_length=1, max_length=64)
@@ -280,22 +293,26 @@ def shell_cfgs(items: List[ShellIn]):
     return result
 
 
+def _enforce_snapshot_workload_limits(req, count: int) -> None:
+    areas = list(getattr(req, "coverage_areas", []) or [])
+    if len(areas) > SETTINGS.max_coverage_areas:
+        raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
+    hp = int(getattr(req, "heatmap_points", 0) or 0)
+    if hp > SETTINGS.max_heatmap_points:
+        raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
+    if bool(getattr(req, "heatmap", False)):
+        area_count = max(1, len(areas))
+        work = count * hp * hp * area_count
+        if work > SETTINGS.max_snapshot_work:
+            raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+
+
 def _enforce_multi_shell_limits(req, *, snapshot: bool = False) -> int:
     shells = shell_cfgs(req.shells)
     count = sum(x[2].total_satellites for x in shells)
-    stations = list(getattr(req, "stations", []) or [])
-    _enforce_station_count(stations)
+    _enforce_station_count(list(getattr(req, "stations", []) or []))
     if snapshot:
-        areas = list(getattr(req, "coverage_areas", []) or [])
-        if len(areas) > SETTINGS.max_coverage_areas:
-            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
-        hp = int(getattr(req, "heatmap_points", 0) or 0)
-        if hp > SETTINGS.max_heatmap_points:
-            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
-        if bool(getattr(req, "heatmap", False)):
-            work = count * hp * hp * max(1, len(areas))
-            if work > SETTINGS.max_snapshot_work:
-                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+        _enforce_snapshot_workload_limits(req, count)
     return count
 
 
@@ -329,20 +346,9 @@ def _enforce_walker_limits(req, *, snapshot: bool = False) -> int:
     count = int(req.planes) * int(req.sats_per_plane)
     if count > SETTINGS.max_satellites:
         raise HTTPException(413, f"Constellation has {count} satellites; server limit is {SETTINGS.max_satellites}.")
-    stations = list(getattr(req, "stations", []) or [])
-    _enforce_station_count(stations)
+    _enforce_station_count(list(getattr(req, "stations", []) or []))
     if snapshot:
-        areas = list(getattr(req, "coverage_areas", []) or [])
-        if len(areas) > SETTINGS.max_coverage_areas:
-            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
-        hp = int(getattr(req, "heatmap_points", 0) or 0)
-        if hp > SETTINGS.max_heatmap_points:
-            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
-        if bool(getattr(req, "heatmap", False)):
-            area_count = max(1, len(areas))
-            work = count * hp * hp * area_count
-            if work > SETTINGS.max_snapshot_work:
-                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+        _enforce_snapshot_workload_limits(req, count)
     return count
 
 
@@ -432,6 +438,8 @@ def server_info():
             "multi_shell_cross_isl": False,
             "scenario_io": True,
             "candidate_comparison": True,
+            "eclipse_geometry": True,
+            "orbit_lifetime_estimate": True,
         },
         "limits": {
             "max_concurrent_jobs": SETTINGS.max_concurrent_jobs,
@@ -565,6 +573,21 @@ def parse_tle(req: TLEParseIn):
     }
 
 
+@app.post("/api/orbit-lifetime")
+def orbit_lifetime(req: OrbitLifetimeIn):
+    return {
+        "altitude_km": req.altitude_km,
+        "drag_coefficient": req.drag_coefficient,
+        "area_to_mass_m2_per_kg": req.area_to_mass_m2_per_kg,
+        **orbital_lifetime_estimate(
+            req.altitude_km,
+            drag_coefficient=req.drag_coefficient,
+            area_to_mass_m2_per_kg=req.area_to_mass_m2_per_kg,
+            reentry_altitude_km=req.reentry_altitude_km,
+        ),
+    }
+
+
 @app.post("/api/snapshot")
 @bounded_compute
 def snapshot(req: SnapshotIn):
@@ -605,6 +628,7 @@ def snapshot(req: SnapshotIn):
                 stations=station_objs(req.stations), include_orbits=req.include_orbits, include_isl=req.include_isl,
                 include_access=req.include_access, orbit_samples=req.orbit_samples,
                 coverage_areas=[x.model_dump() for x in req.coverage_areas],
+                start_utc=req.start_utc,
             )
         _enforce_walker_limits(req, snapshot=True)
         c = constellation_from(req)
@@ -620,6 +644,7 @@ def snapshot(req: SnapshotIn):
             include_access=req.include_access,
             orbit_samples=req.orbit_samples,
             coverage_areas=[x.model_dump() for x in req.coverage_areas],
+            start_utc=req.start_utc,
         )
     except (SGP4UnavailableError, TLEParseError) as exc:
         _tle_error(exc)

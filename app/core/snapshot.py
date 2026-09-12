@@ -7,6 +7,8 @@ from typing import Iterable
 import numpy as np
 
 from .constellation import satellite_ids, satellite_positions_eci, walker_elements
+from .eclipse import eclipse_geometry, instantaneous_eclipse, sun_unit_vector_eci
+from .lifetime import orbital_lifetime_estimate
 from .heatmap import instantaneous_coverage_heatmap, instantaneous_coverage_heatmaps
 from .models import ConstellationConfig, GroundStation
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_rad_s, j2_raan_rate_rad_s
@@ -16,7 +18,7 @@ from .visualization import (
     access_links, nearest_neighbor_isl_links, tle_orbit_paths,
     walker_isl_links, walker_orbit_paths,
 )
-from .tle import TLERecord, altitude_km as tle_altitude_km, parse_tle_text, propagate_tles
+from .tle import TLERecord, altitude_km as tle_altitude_km, build_satrecs, parse_tle_text, propagate_satrecs, propagate_tles
 
 
 def _iso_utc(dt: datetime) -> str:
@@ -55,20 +57,27 @@ def walker_snapshot(
     include_access: bool = True,
     orbit_samples: int = 96,
     coverage_areas: list[dict] | None = None,
+    start_utc: str | None = None,
 ) -> dict:
-    pos_eci = satellite_positions_eci(cfg, t_sec)
+    elements = walker_elements(cfg)
+    pos_eci = satellite_positions_eci(cfg, t_sec, elements)
     pos_ecef = eci_to_ecef(pos_eci, t_sec)
     lat, lon = ecef_to_latlon(pos_ecef)
-    ids = satellite_ids(cfg)
-    pidx, sidx, raan0, u0 = walker_elements(cfg)
+    ids = satellite_ids(cfg, elements)
+    pidx, sidx, raan0, u0 = elements
     n = mean_motion_rad_s(cfg.altitude_km)
     raan_rate = j2_raan_rate_rad_s(cfg.altitude_km, cfg.inclination_deg) if cfg.j2 else 0.0
     raan = raan0 + raan_rate * t_sec
     u = u0 + n * t_sec
     circ_speed = math.sqrt(398600.4418 / (6378.137 + cfg.altitude_km))
 
+    epoch = parse_utc(start_utc)
+    sun_unit = sun_unit_vector_eci(epoch)
+    eclipsed = instantaneous_eclipse(pos_eci, sun_unit)
+
     satellites = []
     for i, sat_id in enumerate(ids):
+        raan_deg_i = float(np.degrees(raan[i]) % 360.0)
         satellites.append({
             "id": sat_id,
             "name": sat_id,
@@ -86,9 +95,11 @@ def walker_snapshot(
             "altitude_km": float(cfg.altitude_km),
             "speed_km_s": float(circ_speed),
             "inclination_deg": float(cfg.inclination_deg),
-            "raan_deg": float(np.degrees(raan[i]) % 360.0),
+            "raan_deg": raan_deg_i,
             "argument_latitude_deg": float(np.degrees(u[i]) % 360.0),
             "period_min": float(orbital_period_s(cfg.altitude_km) / 60.0),
+            "eclipsed": bool(eclipsed[i]),
+            **eclipse_geometry(raan_deg_i, cfg.inclination_deg, cfg.altitude_km, sun_unit),
         })
 
     heatmaps = instantaneous_coverage_heatmaps(pos_ecef, coverage_areas, min_elevation_deg, heatmap_points) if heatmap else []
@@ -106,6 +117,13 @@ def walker_snapshot(
         "heatmap": hm,
         "heatmaps": heatmaps,
         "visualization": viz,
+        "eclipse": {
+            "epoch_utc": _iso_utc(epoch),
+            "sunlit_count": int((~eclipsed).sum()),
+            "eclipsed_count": int(eclipsed.sum()),
+            "note": "원뿔형(반영향 제외) 그림자 모델, 구형 지구 가정. 배터리·태양전지판 용량은 모델링하지 않습니다.",
+        },
+        "orbit_lifetime_estimate": orbital_lifetime_estimate(cfg.altitude_km),
         "errors": [],
     }
 
@@ -139,6 +157,8 @@ def tle_snapshot(
     lat, lon = ecef_to_latlon(ecef)
     alt = tle_altitude_km(p)
     speed = np.linalg.norm(vel, axis=1)
+    sun_unit = sun_unit_vector_eci(when)
+    eclipsed = instantaneous_eclipse(p, sun_unit)
 
     def finite(value):
         value = float(value)
@@ -170,6 +190,7 @@ def tle_snapshot(
             "mean_anomaly_deg": rec.mean_anomaly_deg,
             "mean_motion_rev_day": rec.mean_motion_rev_day,
             "period_min": rec.orbital_period_min,
+            "eclipsed": bool(eclipsed[i]) if math.isfinite(p[i, 0]) else None,
         })
     heatmaps = instantaneous_coverage_heatmaps(ecef, coverage_areas, min_elevation_deg, heatmap_points) if heatmap else []
     hm = heatmaps[0] if heatmaps else None
@@ -189,6 +210,12 @@ def tle_snapshot(
         "heatmap": hm,
         "heatmaps": heatmaps,
         "visualization": viz,
+        "eclipse": {
+            "epoch_utc": _iso_utc(when),
+            "sunlit_count": int(sum(1 for s in satellites if s["eclipsed"] is False)),
+            "eclipsed_count": int(sum(1 for s in satellites if s["eclipsed"] is True)),
+            "note": "원뿔형(반영향 제외) 그림자 모델, 구형 지구 가정. 배터리·태양전지판 용량은 모델링하지 않습니다.",
+        },
         "errors": propagated["errors"],
     }
 
@@ -201,6 +228,7 @@ def tle_station_timelines(
     step_sec: float,
 ) -> dict:
     records, start = _tle_records_and_start(tle_text, start_utc)
+    satrecs = build_satrecs(records)
     times = sample_times(duration_min, step_sec)
     ids = [f"NORAD-{r.norad_id}" for r in records]
     by_station = [{
@@ -214,7 +242,7 @@ def tle_station_timelines(
 
     for t in times:
         when = start + timedelta(seconds=float(t))
-        pr = propagate_tles(records, when)
+        pr = propagate_satrecs(satrecs, when)
         errors.extend(pr["errors"])
         ecef = pr["ecef_km"]
         for item in by_station:

@@ -24,9 +24,34 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int_clamped(name: str, default: int, minimum: int = 1, maximum: int | None = None) -> int:
+    raw = os.getenv(name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def worker_count() -> int:
+    """Number of uvicorn worker processes this instance runs, mirroring server.main()'s calculation."""
+    return _env_int_clamped(
+        "WEB_CONCURRENCY",
+        _env_int_clamped("RENDER_WEB_CONCURRENCY", 1, minimum=1, maximum=8),
+        minimum=1,
+        maximum=8,
+    )
+
+
 @dataclass(frozen=True)
 class ServerSettings:
     max_concurrent_jobs: int
+    max_concurrent_jobs_per_worker: int
     mode: str
     max_satellites: int
     max_tle_satellites: int
@@ -45,9 +70,15 @@ class ServerSettings:
     @classmethod
     def from_env(cls) -> "ServerSettings":
         mode = os.getenv("KLEO_SERVER_MODE", "development").strip().lower() or "development"
+        max_concurrent_jobs = _env_int("KLEO_MAX_CONCURRENT_JOBS", 2)
+        # Each uvicorn worker process holds its own semaphore, so the per-process cap must be
+        # divided across the worker count to keep the *total* concurrent-job limit intact.
+        workers = worker_count()
+        max_concurrent_jobs_per_worker = max(1, -(-max_concurrent_jobs // workers))
         return cls(
             mode=mode,
-            max_concurrent_jobs=_env_int("KLEO_MAX_CONCURRENT_JOBS", 2),
+            max_concurrent_jobs=max_concurrent_jobs,
+            max_concurrent_jobs_per_worker=max_concurrent_jobs_per_worker,
             max_satellites=_env_int("KLEO_MAX_SATELLITES", 4096),
             max_tle_satellites=_env_int("KLEO_MAX_TLE_SATELLITES", 512),
             max_stations=_env_int("KLEO_MAX_STATIONS", 64),

@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -49,6 +50,54 @@ def test_walker_snapshot_api_has_heatmap_and_satellite_properties():
     assert len(viz["orbits"]) == 16
     assert len(viz["isl_links"]) > 0
     assert len(viz["access_links"]) == 3
+
+
+def test_walker_snapshot_api_reports_eclipse_geometry():
+    response = client.post("/api/snapshot", json={
+        "mode": "walker",
+        "time_sec": 0,
+        "altitude_km": 550,
+        "inclination_deg": 53,
+        "planes": 4,
+        "sats_per_plane": 4,
+        "phasing": 1,
+        "heatmap": False,
+        "include_orbits": False,
+        "include_isl": False,
+        "include_access": False,
+        "start_utc": "2026-03-20T00:00:00Z",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    eclipse = data["eclipse"]
+    assert eclipse["epoch_utc"] == "2026-03-20T00:00:00Z"
+    assert eclipse["sunlit_count"] + eclipse["eclipsed_count"] == len(data["satellites"])
+    sat = data["satellites"][0]
+    assert isinstance(sat["eclipsed"], bool)
+    assert 0.0 <= sat["orbit_eclipse_fraction"] <= 1.0
+    assert -90.0 <= sat["beta_deg"] <= 90.0
+    assert sat["eclipse_duration_min"] + sat["sunlit_duration_min"] == pytest.approx(sat["period_min"], rel=1e-6)
+
+
+def test_multi_shell_snapshot_api_reports_eclipse_geometry():
+    response = client.post("/api/snapshot", json={
+        "mode": "multi_shell",
+        "time_sec": 0,
+        "heatmap": False,
+        "include_orbits": False,
+        "include_isl": False,
+        "include_access": False,
+        "start_utc": "2026-03-20T00:00:00Z",
+        "shells": [
+            {"id": "SH1", "altitude_km": 550, "inclination_deg": 53, "planes": 4, "sats_per_plane": 4, "phasing": 1},
+            {"id": "SH2", "altitude_km": 600, "inclination_deg": 70, "planes": 3, "sats_per_plane": 3, "phasing": 1},
+        ],
+    })
+    assert response.status_code == 200
+    data = response.json()
+    eclipse = data["eclipse"]
+    assert eclipse["sunlit_count"] + eclipse["eclipsed_count"] == len(data["satellites"])
+    assert all("eclipsed" in s and "beta_deg" in s for s in data["satellites"])
 
 
 def test_tle_parse_api_works_without_requiring_propagation_runtime():
@@ -132,3 +181,51 @@ def test_walker_snapshot_supports_multiple_country_coverage_tiles():
     data = response.json()
     assert len(data["heatmaps"]) == 3
     assert [x["area_code"] for x in data["heatmaps"]] == ["KOR", "ARE", "SGP"]
+
+
+def test_orbit_lifetime_api_decreases_with_altitude():
+    low = client.post("/api/orbit-lifetime", json={"altitude_km": 350}).json()
+    high = client.post("/api/orbit-lifetime", json={"altitude_km": 800}).json()
+    assert low["negligible_decay"] is False
+    assert high["negligible_decay"] is False
+    assert low["lifetime_years"] < high["lifetime_years"]
+
+
+def test_orbit_lifetime_api_flags_high_altitude_as_negligible():
+    response = client.post("/api/orbit-lifetime", json={"altitude_km": 1500})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["negligible_decay"] is True
+    assert data["lifetime_years"] is None
+
+
+def test_orbit_lifetime_api_rejects_out_of_range_inputs():
+    response = client.post("/api/orbit-lifetime", json={"altitude_km": 550, "drag_coefficient": -1})
+    assert response.status_code == 422
+
+
+def test_walker_snapshot_includes_orbit_lifetime_estimate():
+    response = client.post("/api/snapshot", json={
+        "mode": "walker", "time_sec": 0, "altitude_km": 400, "heatmap": False,
+        "include_orbits": False, "include_isl": False, "include_access": False,
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["orbit_lifetime_estimate"]["negligible_decay"] is False
+    assert data["orbit_lifetime_estimate"]["lifetime_years"] > 0
+
+
+def test_multi_shell_snapshot_includes_per_shell_lifetime_estimate():
+    response = client.post("/api/snapshot", json={
+        "mode": "multi_shell", "time_sec": 0, "heatmap": False,
+        "include_orbits": False, "include_isl": False, "include_access": False,
+        "shells": [
+            {"id": "SH1", "altitude_km": 400, "inclination_deg": 53, "planes": 2, "sats_per_plane": 2, "phasing": 1},
+            {"id": "SH2", "altitude_km": 1200, "inclination_deg": 70, "planes": 2, "sats_per_plane": 2, "phasing": 1},
+        ],
+    })
+    assert response.status_code == 200
+    data = response.json()
+    shells = {s["id"]: s for s in data["shells"]}
+    assert shells["SH1"]["orbit_lifetime_estimate"]["negligible_decay"] is False
+    assert shells["SH2"]["orbit_lifetime_estimate"]["negligible_decay"] is True

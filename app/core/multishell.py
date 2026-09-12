@@ -6,12 +6,15 @@ import numpy as np
 from .constants import C_KM_S, MU_EARTH_KM3_S2, R_EARTH_KM
 from .constellation import satellite_positions_eci, satellite_ids
 from .coverage import timelines_from_states, summarize_timelines
+from .eclipse import eclipse_geometry, instantaneous_eclipse, sun_unit_vector_eci
+from .lifetime import orbital_lifetime_estimate
 from .sampling import sample_times
 from .geometry import walker_orbital_geometry
 from .ground import elevation_and_range
 from .heatmap import instantaneous_coverage_heatmaps
 from .models import ConstellationConfig, GroundStation
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_rad_s, j2_raan_rate_rad_s
+from .snapshot import parse_utc
 from .visualization import access_links, walker_isl_links, walker_orbit_paths
 
 
@@ -35,9 +38,12 @@ def combined_state(shells: list[tuple[str, str, ConstellationConfig]], t_sec: fl
     return ids, meta, np.concatenate(eci_parts), np.concatenate(ecef_parts)
 
 
-def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_sec: float, min_elevation_deg: float = 20.0, heatmap: bool = True, heatmap_points: int = 28, stations=None, include_orbits: bool = True, include_isl: bool = True, include_access: bool = True, orbit_samples: int = 96, coverage_areas=None) -> dict:
+def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_sec: float, min_elevation_deg: float = 20.0, heatmap: bool = True, heatmap_points: int = 28, stations=None, include_orbits: bool = True, include_isl: bool = True, include_access: bool = True, orbit_samples: int = 96, coverage_areas=None, start_utc: str | None = None) -> dict:
     ids, meta, pos_eci, pos_ecef = combined_state(shells, t_sec)
     lat, lon = ecef_to_latlon(pos_ecef)
+    epoch = parse_utc(start_utc)
+    sun_unit = sun_unit_vector_eci(epoch)
+    eclipsed = instantaneous_eclipse(pos_eci, sun_unit) if len(pos_eci) else np.zeros(0, dtype=bool)
     satellites=[]; offset=0; orbit_paths=[]; isl_links=[]
     for shell_idx,(shell_id,shell_name,cfg) in enumerate(shells):
         sid=normalize_shell_id(shell_id,shell_idx)
@@ -51,6 +57,7 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
             # derive RAAN and u consistently with Walker convention
             raan0=2*math.pi*(plane-1)/pcount
             u0=2*math.pi*(slot-1)/spp+2*math.pi*cfg.phasing*(plane-1)/count
+            raan_deg=float(math.degrees(raan0+rr*t_sec)%360)
             satellites.append({
                 "id":f"{sid}-{local_ids[j]}","name":f"{sid} · {local_ids[j]}","source":"Multi-shell Walker",
                 "shell_id":sid,"shell_name":shell_name,"shell_index":shell_idx+1,"plane":plane,"slot":slot,
@@ -58,8 +65,10 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
                 "ecef_x_km":float(pos_ecef[offset+j,0]),"ecef_y_km":float(pos_ecef[offset+j,1]),"ecef_z_km":float(pos_ecef[offset+j,2]),
                 "lat_deg":float(lat[offset+j]),"lon_deg":float(lon[offset+j]),"altitude_km":float(cfg.altitude_km),
                 "speed_km_s":float(math.sqrt(MU_EARTH_KM3_S2/(R_EARTH_KM+cfg.altitude_km))),"inclination_deg":float(cfg.inclination_deg),
-                "raan_deg":float(math.degrees(raan0+rr*t_sec)%360),"argument_latitude_deg":float(math.degrees(u0+n*t_sec)%360),
+                "raan_deg":raan_deg,"argument_latitude_deg":float(math.degrees(u0+n*t_sec)%360),
                 "period_min":float(orbital_period_s(cfg.altitude_km)/60.0),
+                "eclipsed":bool(eclipsed[offset+j]),
+                **eclipse_geometry(raan_deg,cfg.inclination_deg,cfg.altitude_km,sun_unit),
             })
         if include_orbits:
             for p in walker_orbit_paths(cfg,t_sec,orbit_samples):
@@ -72,9 +81,13 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
         offset+=count
     heatmaps=instantaneous_coverage_heatmaps(pos_ecef,coverage_areas,min_elevation_deg,heatmap_points) if heatmap and len(pos_ecef) else []
     st=list(stations or [])
+    eclipse_summary={"epoch_utc":epoch.isoformat().replace("+00:00","Z"),"sunlit_count":int((~eclipsed).sum()),"eclipsed_count":int(eclipsed.sum()),
+        "note":"원뿔형(반영향 제외) 그림자 모델, 구형 지구 가정. 배터리·태양전지판 용량은 모델링하지 않습니다."}
     return {"mode":"multi_shell","time_sec":float(t_sec),"satellites":satellites,"heatmap":heatmaps[0] if heatmaps else None,"heatmaps":heatmaps,
-            "shells":[{"id":normalize_shell_id(x[0],i),"name":x[1],**x[2].to_dict()} for i,x in enumerate(shells)],
-            "visualization":{"orbits":orbit_paths,"isl_links":isl_links,"access_links":access_links(pos_ecef,ids,st) if include_access and st else []},"errors":[]}
+            "shells":[{"id":normalize_shell_id(x[0],i),"name":x[1],**x[2].to_dict(),
+                       "orbit_lifetime_estimate":orbital_lifetime_estimate(x[2].altitude_km)} for i,x in enumerate(shells)],
+            "visualization":{"orbits":orbit_paths,"isl_links":isl_links,"access_links":access_links(pos_ecef,ids,st) if include_access and st else []},
+            "eclipse":eclipse_summary,"errors":[]}
 
 
 def multi_shell_station_timeline(shells, station: GroundStation, times_sec: np.ndarray):
