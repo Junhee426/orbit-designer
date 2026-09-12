@@ -61,15 +61,17 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
     for shell_idx,(shell_id,shell_name,cfg) in enumerate(shells):
         sid=normalize_shell_id(shell_id,shell_idx)
         count=cfg.total_satellites
-        pcount=cfg.planes; spp=cfg.sats_per_plane
+        spp=cfg.sats_per_plane
         n=mean_motion_rad_s(cfg.altitude_km); rr=j2_raan_rate_rad_s(cfg.altitude_km,cfg.inclination_deg) if cfg.j2 else 0.0
-        local_ids=satellite_ids(cfg)
+        elements=walker_elements(cfg)
+        local_ids=satellite_ids(cfg,elements)
+        _,_,raan0_by_sat,u0_by_sat=elements
         # derive display plane/slot from deterministic ordering
         for j in range(count):
             plane=j//spp+1; slot=j%spp+1
-            # derive RAAN and u consistently with Walker convention
-            raan0=2*math.pi*(plane-1)/pcount
-            u0=2*math.pi*(slot-1)/spp+2*math.pi*cfg.phasing*(plane-1)/count
+            # RAAN/u0 come from the single walker_elements() source of truth (constellation.py),
+            # instead of being re-derived here and risking silent drift from that convention.
+            raan0=float(raan0_by_sat[j]); u0=float(u0_by_sat[j])
             raan_deg=float(math.degrees(raan0+rr*t_sec)%360)
             satellites.append({
                 "id":f"{sid}-{local_ids[j]}","name":f"{sid} · {local_ids[j]}","source":"Multi-shell Walker",

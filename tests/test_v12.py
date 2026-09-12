@@ -110,6 +110,26 @@ def test_comparison_has_six_cases_per_city_metrics_and_reproducibility():
     assert qualifying==sorted(qualifying)
 
 
+def test_include_routes_workload_accounts_for_station_pair_routing():
+    from fastapi import HTTPException
+    from app.main import SimIn, _enforce_sim_limits
+    stations=[dict(name=f"S{i}",lat_deg=0.0,lon_deg=float(i),min_elevation_deg=10) for i in range(64)]
+    req=SimIn(planes=64,sats_per_plane=64,duration_min=1,step_sec=60,stations=stations,include_routes=True)
+    with pytest.raises(HTTPException):
+        _enforce_sim_limits(req,req.planes*req.sats_per_plane)
+    # Same size and station count without routing stays under the same workload budget.
+    req_no_routes=req.model_copy(update={'include_routes':False})
+    _enforce_sim_limits(req_no_routes,req_no_routes.planes*req_no_routes.sats_per_plane)
+
+
+def test_scenario_validation_rejects_tle_mode_heatmap_workload_like_walker_mode():
+    from pathlib import Path
+    tle=Path('examples/vanguard1_verification.tle').read_text()
+    payload=dict(configuration=dict(mode='tle',tle_text=tle,heatmap=True,heatmap_points=SETTINGS.max_heatmap_points+1),selection=dict(country_codes=['KOR']))
+    r=client.post('/api/scenario/validate',json=payload)
+    assert r.status_code==413
+
+
 def test_scenario_validation_round_trip():
     payload=dict(schema_version='kleo.scenario.v1',configuration=dict(mode='walker',altitude_km=888,planes=16),selection=dict(country_codes=['KOR','ARE','SGP'],cities_per_country=2),duration_min=120,step_sec=60)
     response=client.post('/api/scenario/validate',json=payload)

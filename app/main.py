@@ -358,6 +358,13 @@ def _enforce_sim_limits(req, satellite_count: int) -> None:
         raise HTTPException(413, f"Simulation has {samples} time samples; server limit is {SETTINGS.max_sim_samples}.")
     station_count = max(1, len(req.stations))
     work = satellite_count * samples * station_count
+    if getattr(req, "include_routes", False):
+        # all_station_pair_routes runs one Dijkstra pass per station pair over the ~2*N-edge ISL
+        # graph, independent of `samples`, so it isn't covered by the term above. Approximate its
+        # O(E log V) cost per pair so a large station count with include_routes=True can't slip
+        # through on a workload estimate that only counted propagation samples.
+        routing_pairs = station_count * (station_count - 1) // 2
+        work += routing_pairs * satellite_count * max(1, satellite_count.bit_length())
     if work > SETTINGS.max_sim_work:
         raise HTTPException(413, f"Simulation workload {work:,} exceeds server limit {SETTINGS.max_sim_work:,}.")
 
@@ -716,6 +723,9 @@ def validate_scenario(req: ScenarioIn):
             parse_utc(cfg.start_utc)
         except TLEParseError as exc:
             raise HTTPException(400, str(exc)) from exc
+        # walker/multi_shell already run this (via snapshot=True above); TLE mode must too, or
+        # /api/scenario/validate can pass a scenario that /api/snapshot then rejects with 413.
+        _enforce_snapshot_workload_limits(cfg, count)
     _enforce_sim_limits(SimIn(duration_min=req.duration_min, step_sec=req.step_sec, stations=cfg.stations), count)
     selected = resolve_service_regions(req.selection)
     # The UI restores country selection. Ensure its regenerated cities fit the workload too.
