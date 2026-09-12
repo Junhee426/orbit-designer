@@ -28,8 +28,10 @@ def walker_elements(cfg: ConstellationConfig):
     )
 
 
-def satellite_positions_eci(cfg: ConstellationConfig, t_sec: float) -> np.ndarray:
-    _, _, raan0, u0 = walker_elements(cfg)
+def satellite_positions_eci(cfg: ConstellationConfig, t_sec: float, elements=None) -> np.ndarray:
+    if elements is None:
+        elements = walker_elements(cfg)
+    _, _, raan0, u0 = elements
     r = orbital_radius_km(cfg.altitude_km)
     n = mean_motion_rad_s(cfg.altitude_km)
     inc = math.radians(cfg.inclination_deg)
@@ -50,6 +52,37 @@ def satellite_positions_eci(cfg: ConstellationConfig, t_sec: float) -> np.ndarra
     return np.stack((x, y, z), axis=-1)
 
 
-def satellite_ids(cfg: ConstellationConfig):
-    p, s, _, _ = walker_elements(cfg)
+def satellite_ids(cfg: ConstellationConfig, elements=None):
+    if elements is None:
+        elements = walker_elements(cfg)
+    p, s, _, _ = elements
     return [f"P{pi+1:02d}-S{si+1:02d}" for pi, si in zip(p, s)]
+
+
+def satellite_position_eci_single(cfg: ConstellationConfig, idx: int, t_sec: float) -> np.ndarray:
+    """Position of exactly one satellite (shape (1, 3)), without rebuilding the whole constellation.
+
+    Equivalent to satellite_positions_eci(cfg, t_sec)[idx:idx+1] but O(1) in constellation size,
+    for call sites (e.g. per-sample ground-track loops) that only need a single satellite.
+    """
+    plane, slot = divmod(idx, cfg.sats_per_plane)
+    total = cfg.total_satellites
+    r = orbital_radius_km(cfg.altitude_km)
+    n = mean_motion_rad_s(cfg.altitude_km)
+    inc = math.radians(cfg.inclination_deg)
+    raan0 = 2.0 * math.pi * plane / cfg.planes
+    u0 = 2.0 * math.pi * slot / cfg.sats_per_plane + 2.0 * math.pi * cfg.phasing * plane / total
+    if cfg.j2:
+        raan = raan0 + j2_raan_rate_rad_s(cfg.altitude_km, cfg.inclination_deg) * t_sec
+    else:
+        raan = raan0
+    u = u0 + n * t_sec
+
+    cu, su = math.cos(u), math.sin(u)
+    cO, sO = math.cos(raan), math.sin(raan)
+    ci, si = math.cos(inc), math.sin(inc)
+
+    x = r * (cO * cu - sO * su * ci)
+    y = r * (sO * cu + cO * su * ci)
+    z = r * (su * si)
+    return np.array([[x, y, z]], dtype=float)

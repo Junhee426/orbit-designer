@@ -188,14 +188,17 @@ def _split_jd(dt: datetime) -> tuple[float, float]:
     return float(jd), float(fr)
 
 
-def propagate_tles(records: Iterable[TLERecord], dt: datetime) -> dict:
+def build_satrecs(records: Iterable[TLERecord]) -> list[tuple[TLERecord, "Satrec"]]:
+    """Parse each TLE record into an SGP4 Satrec once, for reuse across many propagation calls."""
     if not sgp4_available():
         raise SGP4UnavailableError("SGP4 package is not installed. Run 'uv sync' to install sgp4>=2.27.")
-    records = list(records)
+    return [(rec, Satrec.twoline2rv(rec.line1, rec.line2)) for rec in records]
+
+
+def propagate_satrecs(satrecs: list[tuple[TLERecord, "Satrec"]], dt: datetime) -> dict:
     jd, fr = _split_jd(dt)
     pos_teme, vel_teme, errors = [], [], []
-    for rec in records:
-        sat = Satrec.twoline2rv(rec.line1, rec.line2)
+    for rec, sat in satrecs:
         err, r, v = sat.sgp4(jd, fr)
         if err:
             errors.append({"norad_id": rec.norad_id, "code": int(err), "message": SGP4_ERRORS.get(err, "Unknown SGP4 error")})
@@ -208,6 +211,10 @@ def propagate_tles(records: Iterable[TLERecord], dt: datetime) -> dict:
     v = np.asarray(vel_teme, dtype=float)
     ecef = teme_to_ecef(p, dt)
     return {"teme_km": p, "ecef_km": ecef, "velocity_teme_km_s": v, "errors": errors}
+
+
+def propagate_tles(records: Iterable[TLERecord], dt: datetime) -> dict:
+    return propagate_satrecs(build_satrecs(records), dt)
 
 
 def altitude_km(r_km: np.ndarray) -> np.ndarray:

@@ -4,6 +4,8 @@ import os
 
 import uvicorn
 
+from .server_config import worker_count
+
 
 def _int_env(name: str, default: int, minimum: int = 1, maximum: int | None = None) -> int:
     raw = os.getenv(name)
@@ -22,12 +24,7 @@ def _int_env(name: str, default: int, minimum: int = 1, maximum: int | None = No
 def main() -> None:
     port = _int_env("PORT", 10000, minimum=1, maximum=65535)
     # Render publishes WEB_CONCURRENCY / RENDER_WEB_CONCURRENCY according to the instance CPU count.
-    workers = _int_env(
-        "WEB_CONCURRENCY",
-        _int_env("RENDER_WEB_CONCURRENCY", 1, minimum=1, maximum=8),
-        minimum=1,
-        maximum=8,
-    )
+    workers = worker_count()
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",

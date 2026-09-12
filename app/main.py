@@ -67,7 +67,7 @@ async def production_headers(request: Request, call_next):
     return response
 
 
-_COMPUTE_SLOTS = threading.BoundedSemaphore(SETTINGS.max_concurrent_jobs)
+_COMPUTE_SLOTS = threading.BoundedSemaphore(SETTINGS.max_concurrent_jobs_per_worker)
 
 
 def bounded_compute(func):
@@ -280,22 +280,26 @@ def shell_cfgs(items: List[ShellIn]):
     return result
 
 
+def _enforce_snapshot_workload_limits(req, count: int) -> None:
+    areas = list(getattr(req, "coverage_areas", []) or [])
+    if len(areas) > SETTINGS.max_coverage_areas:
+        raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
+    hp = int(getattr(req, "heatmap_points", 0) or 0)
+    if hp > SETTINGS.max_heatmap_points:
+        raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
+    if bool(getattr(req, "heatmap", False)):
+        area_count = max(1, len(areas))
+        work = count * hp * hp * area_count
+        if work > SETTINGS.max_snapshot_work:
+            raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+
+
 def _enforce_multi_shell_limits(req, *, snapshot: bool = False) -> int:
     shells = shell_cfgs(req.shells)
     count = sum(x[2].total_satellites for x in shells)
-    stations = list(getattr(req, "stations", []) or [])
-    _enforce_station_count(stations)
+    _enforce_station_count(list(getattr(req, "stations", []) or []))
     if snapshot:
-        areas = list(getattr(req, "coverage_areas", []) or [])
-        if len(areas) > SETTINGS.max_coverage_areas:
-            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
-        hp = int(getattr(req, "heatmap_points", 0) or 0)
-        if hp > SETTINGS.max_heatmap_points:
-            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
-        if bool(getattr(req, "heatmap", False)):
-            work = count * hp * hp * max(1, len(areas))
-            if work > SETTINGS.max_snapshot_work:
-                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+        _enforce_snapshot_workload_limits(req, count)
     return count
 
 
@@ -329,20 +333,9 @@ def _enforce_walker_limits(req, *, snapshot: bool = False) -> int:
     count = int(req.planes) * int(req.sats_per_plane)
     if count > SETTINGS.max_satellites:
         raise HTTPException(413, f"Constellation has {count} satellites; server limit is {SETTINGS.max_satellites}.")
-    stations = list(getattr(req, "stations", []) or [])
-    _enforce_station_count(stations)
+    _enforce_station_count(list(getattr(req, "stations", []) or []))
     if snapshot:
-        areas = list(getattr(req, "coverage_areas", []) or [])
-        if len(areas) > SETTINGS.max_coverage_areas:
-            raise HTTPException(413, f"Too many coverage areas: {len(areas)} > {SETTINGS.max_coverage_areas}.")
-        hp = int(getattr(req, "heatmap_points", 0) or 0)
-        if hp > SETTINGS.max_heatmap_points:
-            raise HTTPException(413, f"Heat-map resolution {hp} exceeds server limit {SETTINGS.max_heatmap_points}.")
-        if bool(getattr(req, "heatmap", False)):
-            area_count = max(1, len(areas))
-            work = count * hp * hp * area_count
-            if work > SETTINGS.max_snapshot_work:
-                raise HTTPException(413, f"Snapshot workload {work:,} exceeds server limit {SETTINGS.max_snapshot_work:,}.")
+        _enforce_snapshot_workload_limits(req, count)
     return count
 
 

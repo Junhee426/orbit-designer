@@ -16,7 +16,7 @@ from .visualization import (
     access_links, nearest_neighbor_isl_links, tle_orbit_paths,
     walker_isl_links, walker_orbit_paths,
 )
-from .tle import TLERecord, altitude_km as tle_altitude_km, parse_tle_text, propagate_tles
+from .tle import TLERecord, altitude_km as tle_altitude_km, build_satrecs, parse_tle_text, propagate_satrecs, propagate_tles
 
 
 def _iso_utc(dt: datetime) -> str:
@@ -56,11 +56,12 @@ def walker_snapshot(
     orbit_samples: int = 96,
     coverage_areas: list[dict] | None = None,
 ) -> dict:
-    pos_eci = satellite_positions_eci(cfg, t_sec)
+    elements = walker_elements(cfg)
+    pos_eci = satellite_positions_eci(cfg, t_sec, elements)
     pos_ecef = eci_to_ecef(pos_eci, t_sec)
     lat, lon = ecef_to_latlon(pos_ecef)
-    ids = satellite_ids(cfg)
-    pidx, sidx, raan0, u0 = walker_elements(cfg)
+    ids = satellite_ids(cfg, elements)
+    pidx, sidx, raan0, u0 = elements
     n = mean_motion_rad_s(cfg.altitude_km)
     raan_rate = j2_raan_rate_rad_s(cfg.altitude_km, cfg.inclination_deg) if cfg.j2 else 0.0
     raan = raan0 + raan_rate * t_sec
@@ -201,6 +202,7 @@ def tle_station_timelines(
     step_sec: float,
 ) -> dict:
     records, start = _tle_records_and_start(tle_text, start_utc)
+    satrecs = build_satrecs(records)
     times = sample_times(duration_min, step_sec)
     ids = [f"NORAD-{r.norad_id}" for r in records]
     by_station = [{
@@ -214,7 +216,7 @@ def tle_station_timelines(
 
     for t in times:
         when = start + timedelta(seconds=float(t))
-        pr = propagate_tles(records, when)
+        pr = propagate_satrecs(satrecs, when)
         errors.extend(pr["errors"])
         ecef = pr["ecef_km"]
         for item in by_station:

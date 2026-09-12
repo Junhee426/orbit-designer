@@ -4,7 +4,7 @@ import math
 import numpy as np
 
 from .constants import R_EARTH_KM
-from .constellation import satellite_positions_eci, satellite_ids
+from .constellation import satellite_position_eci_single, satellite_ids
 from .models import ConstellationConfig
 from .orbit import eci_to_ecef, ecef_to_latlon
 
@@ -24,10 +24,6 @@ def footprint_central_angle_rad(altitude_km: float, min_elevation_deg: float) ->
     arg = (R_EARTH_KM / r) * math.cos(e)
     arg = min(1.0, max(-1.0, arg))
     return max(0.0, math.acos(arg) - e)
-
-
-def footprint_radius_km(altitude_km: float, min_elevation_deg: float) -> float:
-    return R_EARTH_KM * footprint_central_angle_rad(altitude_km, min_elevation_deg)
 
 
 def footprint_polygon(lat_deg: float, lon_deg: float, altitude_km: float, min_elevation_deg: float, samples: int = 72) -> dict:
@@ -75,7 +71,7 @@ def walker_ground_track(cfg: ConstellationConfig, satellite_id: str, center_t_se
     times = np.linspace(float(center_t_sec) - span_sec / 2.0, float(center_t_sec) + span_sec / 2.0, samples)
     points = []
     for t in times:
-        eci = satellite_positions_eci(cfg, float(t))[idx:idx+1]
+        eci = satellite_position_eci_single(cfg, idx, float(t))
         ecef = eci_to_ecef(eci, float(t))
         lat, lon = ecef_to_latlon(ecef)
         points.append([float(lon[0]), float(lat[0])])
@@ -93,7 +89,7 @@ def walker_orbital_geometry(cfg: ConstellationConfig, satellite_id: str, t_sec: 
         idx = ids.index(satellite_id)
     except ValueError as exc:
         raise ValueError(f"Unknown Walker satellite id: {satellite_id}") from exc
-    eci = satellite_positions_eci(cfg, float(t_sec))[idx:idx+1]
+    eci = satellite_position_eci_single(cfg, idx, float(t_sec))
     ecef = eci_to_ecef(eci, float(t_sec))
     lat, lon = ecef_to_latlon(ecef)
     fp = footprint_polygon(float(lat[0]), float(lon[0]), cfg.altitude_km, min_elevation_deg, footprint_samples)
