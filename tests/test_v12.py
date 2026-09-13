@@ -1,7 +1,9 @@
 import json
+import threading
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+import app.main as main_module
 from app.main import app, _COMPUTE_SLOTS, SETTINGS
 from app.core.sampling import sample_times, sampled_metrics
 from app.core.coverage import multi_station_summary
@@ -76,14 +78,57 @@ def test_expanded_preset_three_cities_works():
 
 
 def test_busy_server_rejects_work_and_keeps_health_live():
-    for _ in range(SETTINGS.max_concurrent_jobs): assert _COMPUTE_SLOTS.acquire(False)
+    for _ in range(SETTINGS.max_concurrent_jobs_per_worker): assert _COMPUTE_SLOTS.acquire(False)
     try:
         assert client.get('/health').status_code==200
+        rejected_before=main_module._rejected_jobs_total
         r=client.post('/api/snapshot',json={'heatmap':False})
         assert r.status_code==503 and r.headers['retry-after']=='1'
+        assert main_module._rejected_jobs_total==rejected_before+1
     finally:
-        for _ in range(SETTINGS.max_concurrent_jobs): _COMPUTE_SLOTS.release()
+        for _ in range(SETTINGS.max_concurrent_jobs_per_worker): _COMPUTE_SLOTS.release()
     assert client.post('/api/snapshot',json={'heatmap':False}).status_code==200
+
+
+def test_server_info_reports_current_load_not_just_static_limits():
+    accepted_before=main_module._accepted_jobs_total
+    r=client.get('/api/server-info')
+    assert r.status_code==200
+    load=r.json()['load']
+    assert load['max_concurrent_jobs_this_worker']==SETTINGS.max_concurrent_jobs_per_worker
+    assert load['active_jobs_this_worker']==0
+    assert load['available_slots_this_worker']==SETTINGS.max_concurrent_jobs_per_worker
+    client.post('/api/snapshot',json={'heatmap':False})
+    assert main_module._accepted_jobs_total==accepted_before+1
+    assert client.get('/api/server-info').json()['load']['active_jobs_this_worker']==0
+
+
+def test_load_counters_reflect_in_flight_job_while_it_runs():
+    # A slow bounded_compute-wrapped call occupies a slot; server-info
+    # observed concurrently must show it as active with fewer available
+    # slots, proving the counter is visible mid-job rather than only
+    # updated after completion (which the accepted/rejected totals alone
+    # would not demonstrate).
+    started=threading.Event()
+    release=threading.Event()
+
+    @main_module.bounded_compute
+    def slow(req):
+        started.set()
+        release.wait(timeout=5)
+        return {"ok": True}
+
+    t=threading.Thread(target=slow, args=(None,))
+    try:
+        t.start()
+        assert started.wait(timeout=5)
+        info=client.get('/api/server-info').json()['load']
+        assert info['active_jobs_this_worker']>=1
+        assert info['available_slots_this_worker']==SETTINGS.max_concurrent_jobs_per_worker-info['active_jobs_this_worker']
+    finally:
+        release.set()
+        t.join(timeout=5)
+    assert client.get('/api/server-info').json()['load']['active_jobs_this_worker']==0
 
 
 def test_comparison_has_six_cases_per_city_metrics_and_reproducibility():
