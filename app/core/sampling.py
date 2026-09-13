@@ -8,13 +8,18 @@ def sample_count(duration_min, step_sec):
     step = float(step_sec)
     if not math.isfinite(end) or not math.isfinite(step) or end <= 0 or step <= 0:
         raise ValueError("Duration and step must be finite and positive.")
-    return max(2, int(math.ceil(end / step)) + 1)
+    intervals = max(1, int(math.ceil(end / step)))
+    # Floating-point division can round an exact endpoint above an integer,
+    # although multiplying that last sample index by step reaches the endpoint.
+    if intervals > 1 and (intervals - 1) * step >= end:
+        intervals -= 1
+    return intervals + 1
 
 
 def sample_times(duration_min, step_sec):
-    sample_count(duration_min, step_sec)
+    count = sample_count(duration_min, step_sec)
     end = float(duration_min) * 60.0
-    times = np.arange(0.0, end, float(step_sec))
+    times = np.arange(count - 1, dtype=float) * float(step_sec)
     return np.append(times, end)
 
 

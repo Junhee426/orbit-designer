@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
@@ -61,8 +61,12 @@ async def production_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - started) * 1000.0:.1f}"
-    if request.url.path.startswith("/static/"):
-        response.headers.setdefault("Cache-Control", f"public, max-age={SETTINGS.static_cache_seconds}")
+    if request.url.path.startswith("/static/") and response.status_code < 400:
+        # Unversioned application code must be revalidated after deployments.
+        if Path(request.url.path).suffix.lower() in {".js", ".mjs", ".css", ".html"}:
+            response.headers["Cache-Control"] = "no-cache"
+        else:
+            response.headers.setdefault("Cache-Control", f"public, max-age={SETTINGS.static_cache_seconds}")
     else:
         response.headers.setdefault("Cache-Control", "no-store")
     return response
@@ -339,6 +343,11 @@ def _enforce_sim_limits(req, satellite_count: int) -> None:
         raise HTTPException(413, f"Simulation has {samples} time samples; server limit is {SETTINGS.max_sim_samples}.")
     station_count = max(1, len(req.stations))
     work = satellite_count * samples * station_count
+    if getattr(req, "include_routes", False) and len(req.stations) > 1:
+        # Sparse Dijkstra per source plus a worst-case satellite scan per pair.
+        pairs = station_count * (station_count - 1) // 2
+        searches = (station_count - 1) * max(1, math.ceil(math.log2(satellite_count)))
+        work += satellite_count * (pairs + searches)
     if work > SETTINGS.max_sim_work:
         raise HTTPException(413, f"Simulation workload {work:,} exceeds server limit {SETTINGS.max_sim_work:,}.")
 
@@ -644,7 +653,12 @@ def trade(req: TradeIn):
 
 @app.get("/", response_class=HTMLResponse)
 def root():
-    return FileResponse(BASE / "static" / "index.html")
+    static = BASE / "static"
+    html = (static / "index.html").read_text(encoding="utf-8")
+    for name in ("app.js", "workspace.css"):
+        digest = hashlib.sha256((static / name).read_bytes()).hexdigest()[:16]
+        html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={digest}"')
+    return HTMLResponse(html)
 
 
 class ScenarioIn(InputModel):

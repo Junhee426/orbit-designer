@@ -11,7 +11,7 @@ assert(application.includes('function startPlayback'), 'The application script m
 const testExports = `window.testAPI = {
   state, setWorkspace, refreshPreview, renderOrbitSummary, invalidatePreview,
   snapshotPayload, bootstrap, invalidateAnalysis, runAnalysis, markServiceDirty,
-  applyServiceSelection,
+  applyServiceSelection, bind, startPlayback, stopPlayback, refetchLayers,
   stubScene() {
     renderCoverage = async () => {};
     reconcileSatellites = () => {};
@@ -52,6 +52,7 @@ function setup() {
     if (!elements.has(id)) {
       const attributes = new Map();
       const classes = new Set();
+      const listeners = new Map();
       elements.set(id, {
         id, value: controls[id] ?? '', textContent: '', innerHTML: '', disabled: false,
         checked: false, hidden: false, max: '7200', style: {}, dataset: {}, children: [],
@@ -69,7 +70,12 @@ function setup() {
         setAttribute(name, value) { attributes.set(name, String(value)); },
         getAttribute(name) { return attributes.get(name) ?? null; },
         removeAttribute(name) { attributes.delete(name); },
-        addEventListener() {}, focus() {}, scrollIntoView() {}, click() {},
+        addEventListener(name, callback) {
+          if (!listeners.has(name)) listeners.set(name, []);
+          listeners.get(name).push(callback);
+        },
+        dispatch(name) { for (const callback of listeners.get(name) || []) callback({ target: this }); },
+        focus() {}, scrollIntoView() {}, click() { if (!this.disabled) this.dispatch('click'); },
         querySelector() { return null; }, querySelectorAll() { return []; },
       });
     }
@@ -123,6 +129,12 @@ function setup() {
   return {
     api, document, element, elements, requests, viewer,
     setFetch(fn) { requestImpl = fn; },
+    timers() { return pendingTimers; },
+    runNextTimer() {
+      const timer = pendingTimers.shift();
+      assert.ok(timer, 'A callback must be scheduled before advancing the clock.');
+      return timer.fn();
+    },
     selectCountries(codes) { selectedCodes = codes; },
     flushFrames() { const current = frames; frames = []; current.forEach(fn => fn()); },
   };
@@ -339,6 +351,105 @@ async function run() {
   assert.equal(h.requests[2].body.stations[0].name, 'Tokyo');
   assert.deepEqual(h.api.state.serviceSelection.country_codes, ['JPN']);
   assert.equal(h.api.state.analysis, result);
+  checks++;
+
+  // Programmatic TLE example input clears completed results and the preview badge.
+  h = setup();
+  h.api.bind();
+  h.element('mode').value = 'tle';
+  h.element('tleText').value = 'previous TLE';
+  h.api.state.analysis = result;
+  h.api.state.snapshot = savedSnapshot;
+  h.api.renderOrbitSummary(savedSnapshot);
+  h.element('kAvail').textContent = '90.0%';
+  const parseResult = { satellites: [], count: 1, sgp4_available: true };
+  h.setFetch(async () => ({ ok: true, json: async () => parseResult }));
+  h.element('tleExampleBtn').click();
+  assert.notEqual(h.element('tleText').value, 'previous TLE');
+  assert.equal(h.api.state.analysis, null);
+  assert.equal(h.element('kAvail').textContent, '–');
+  assert.equal(h.element('exportJsonBtn').disabled, true);
+  assert.equal(h.element('exportCsvBtn').disabled, true);
+  assert.equal(h.api.state.previewDirty, true);
+  assert.deepEqual(h.requests.map(request => request.url), ['/api/tle/parse']);
+  checks++;
+
+  // A pending analysis for the previous TLE cannot publish after example input.
+  h = setup();
+  h.api.bind();
+  h.element('mode').value = 'tle';
+  h.element('tleText').value = 'previous TLE';
+  let finishTleAnalysis;
+  h.setFetch(url => url === '/api/tle/simulate'
+    ? new Promise(resolve => { finishTleAnalysis = resolve; })
+    : Promise.resolve({ ok: true, json: async () => parseResult }));
+  const pendingTleAnalysis = h.api.runAnalysis();
+  h.element('tleExampleBtn').click();
+  finishTleAnalysis({ ok: true, json: async () => ({ ...result, mode: 'tle' }) });
+  await pendingTleAnalysis;
+  assert.equal(h.api.state.analysis, null);
+  assert.equal(h.element('analysisResults').hidden, true);
+  assert.equal(h.element('exportJsonBtn').disabled, true);
+  assert.equal(h.api.state.analysisBusy, false);
+  checks++;
+
+  // Layer edits during slow playback share its next frame, with no competing request.
+  h = setup();
+  h.api.bind();
+  h.api.state.snapshot = savedSnapshot;
+  const frames = [];
+  h.setFetch((url, options) => new Promise(resolve => {
+    frames.push({ resolve, signal: options.signal, body: JSON.parse(options.body) });
+  }));
+  h.api.startPlayback();
+  const firstFrame = h.runNextTimer();
+  assert.equal(frames.length, 1);
+  assert.equal(h.timers().length, 0);
+  for (const id of ['coverageOn', 'islOn', 'accessOn']) {
+    h.element(id).checked = true;
+    h.element(id).dispatch('change');
+  }
+  assert.equal(frames.length, 1);
+  assert.equal(frames[0].signal.aborted, false);
+  frames[0].resolve({ ok: true, json: async () => ({ ...snapshot(), time_sec: frames[0].body.time_sec }) });
+  await firstFrame;
+  assert.equal(h.api.state.playing, true);
+  assert.equal(h.timers().length, 1);
+  // Changes while awaiting the next timer also stay on the single playback loop.
+  h.element('heatRes').value = '40';
+  h.element('heatRes').dispatch('change');
+  assert.equal(frames.length, 1);
+  const secondFrame = h.runNextTimer();
+  assert.equal(frames.length, 2);
+  assert.equal(frames[1].body.heatmap, true);
+  assert.equal(frames[1].body.include_isl, true);
+  assert.equal(frames[1].body.include_access, true);
+  assert.equal(frames[1].body.heatmap_points, 40);
+  assert.ok(frames[1].body.time_sec > frames[0].body.time_sec);
+  // Stopping an in-flight updated frame must not resurrect the timer.
+  h.api.stopPlayback();
+  frames[1].resolve({ ok: true, json: async () => ({ ...snapshot(), time_sec: frames[1].body.time_sec }) });
+  await secondFrame;
+  assert.equal(h.api.state.playing, false);
+  assert.equal(h.timers().length, 0);
+  checks++;
+
+  // A failed frame stops playback without retrying, and paused layer edits still refresh.
+  h = setup();
+  h.api.state.snapshot = savedSnapshot;
+  h.setFetch(async () => ({ ok: false, json: async () => ({ detail: 'Snapshot failed' }) }));
+  h.api.startPlayback();
+  await h.runNextTimer();
+  assert.equal(h.api.state.playing, false);
+  assert.equal(h.timers().length, 0);
+  assert.equal(h.requests.length, 1);
+  h.element('coverageOn').checked = true;
+  h.setFetch(async () => ({ ok: true, json: async () => snapshot() }));
+  await h.api.refetchLayers();
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[1].body.heatmap, true);
+  assert.equal(h.api.state.playing, false);
+  assert.equal(h.timers().length, 0);
   checks++;
 
   // Startup displays the layout without running visibility or trade analysis.

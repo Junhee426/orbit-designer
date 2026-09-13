@@ -23,9 +23,11 @@ def timelines_from_states(stations, times_sec, ids, state_at_time):
             row["best_elevation_deg"].append(float(elev[valid].max()) if valid.any() else None)
             best = int(np.where(mask)[0][np.argmax(elev[mask])]) if mask.any() else None
             distance = float(rng[best]) if best is not None else None
+            # Across shells, the highest-elevation satellite need not be nearest.
+            min_distance = float(rng[mask].min()) if best is not None else None
             row["best_satellite_ids"].append(ids[best] if best is not None else None)
             row["best_slant_range_km"].append(distance)
-            row["min_one_way_propagation_ms"].append(1000.0 * distance / C_KM_S if distance is not None else None)
+            row["min_one_way_propagation_ms"].append(1000.0 * min_distance / C_KM_S if min_distance is not None else None)
     for row in rows:
         row.update(sampled_metrics(row["best_satellite_ids"], row["visible_counts"], times_sec))
     return rows

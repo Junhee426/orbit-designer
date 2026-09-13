@@ -1502,7 +1502,9 @@
   }
 
   function refetchLayers() {
-    if (state.snapshot) fetchSnapshot(+$('timeSlider').value, true)
+    // Playback reads the latest layer controls on its next frame. A separate
+    // request here would abort its active frame and break the playback loop.
+    if (state.snapshot && !state.playing) return fetchSnapshot(+$('timeSlider').value, true)
   }
 
   function selectNextServiceSatellite() {
@@ -1535,6 +1537,8 @@
     $('tleParseBtn').addEventListener('click', parseTLE);
     $('tleExampleBtn').addEventListener('click', () => {
       $('tleText').value = verificationTLE;
+      invalidateAnalysis();
+      invalidatePreview();
       parseTLE()
     });
     $('applyServiceBtn').addEventListener('click', () => applyServiceSelection(false));
