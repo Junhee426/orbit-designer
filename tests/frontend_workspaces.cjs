@@ -12,6 +12,7 @@ assert(application, 'The application script must be available to the behavior ha
 const testExports = `window.testAPI = {
   state, setWorkspace, refreshPreview, renderOrbitSummary, invalidatePreview,
   snapshotPayload, bootstrap, invalidateAnalysis, runAnalysis, markServiceDirty,
+  setViewMode,
   applyServiceSelection,
   stubScene() {
     renderCoverage = async () => {};
@@ -25,6 +26,8 @@ const testExports = `window.testAPI = {
     initShells = () => {};
     bind = () => {};
     bindRelease = () => {};
+    bindFlatView = () => {};
+    loadWorldOutlines = async () => {};
     loadServiceCatalog = async () => {};
     resolveServiceSelection = async () => {};
     loadCesium = async () => {};
@@ -171,6 +174,32 @@ async function run() {
     assert.equal(h.api.snapshotPayload(0).heatmap, true);
   }
   assert.equal(h.requests.length, 0);
+  checks++;
+
+  // Switching to a 2D view mode hides the Cesium host and Cesium-only camera
+  // tools, shows the flat canvas/legend, and marks the right toggle active;
+  // switching back to 3D reverses all of it and resizes the Cesium viewer.
+  h.api.setViewMode('2d-globe');
+  assert.equal(h.element('cesiumContainer').hidden, true);
+  assert.equal(h.element('flatCanvas').hidden, false);
+  assert.equal(h.element('flatLegend').hidden, false);
+  assert.equal(h.element('flatModeNote').hidden, false);
+  assert.equal(h.element('globalView').style.display, 'none');
+  assert.equal(h.element('view2dGlobe').classList.contains('active'), true);
+  assert.equal(h.element('view2dGlobe').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.element('view3d').classList.contains('active'), false);
+  assert.equal(h.element('view3d').getAttribute('aria-pressed'), 'false');
+  assert.equal(h.element('flatLegendTitle').textContent, '2D 지구본');
+  h.api.setViewMode('2d-map');
+  assert.equal(h.element('flatLegendTitle').textContent, '2D 평면도');
+  assert.equal(h.element('view2dMap').classList.contains('active'), true);
+  const resizeCallsBeforeReturn = h.viewer.resizeCalls;
+  h.api.setViewMode('3d');
+  assert.equal(h.element('cesiumContainer').hidden, false);
+  assert.equal(h.element('flatCanvas').hidden, true);
+  assert.equal(h.element('globalView').style.display, '');
+  assert.equal(h.element('view3d').classList.contains('active'), true);
+  assert.equal(h.viewer.resizeCalls, resizeCallsBeforeReturn + 1);
   checks++;
 
   // Preview metrics describe returned satellites, even when the form has 128.
