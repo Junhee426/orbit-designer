@@ -62,7 +62,7 @@
     <div class="field"><label for="heatRes">히트맵 격자</label><input id="heatRes" type="range" min="12" max="60" value="28"><div id="heatResValue" class="note">28×28</div></div>
     <div class="field"><label for="coverageOpacity">히트맵 불투명도</label><div class="range-line"><input id="coverageOpacity" type="range" min="0.05" max="0.9" step="0.05" value="0.55"><span id="coverageOpacityValue" class="range-value">0.55</span></div></div>
     <div class="field"><label for="boundaryMode">서비스 국가 경계</label><select id="boundaryMode"><option value="off">숨기기</option><option value="auto">표시</option></select></div><div id="boundarySourceNote" class="note">국가 경계를 켜면 지도 데이터를 불러옵니다.</div><p class="note">서비스 지역은 상세 분석 화면에서 선택합니다.</p>
-    <p class="note" id="flatModeNote" hidden>2D 보기에서는 궤도선·ISL 연결·지상국 연결·히트맵이 표시되지 않습니다. 위성 위치, 관측 도시, 선택 위성의 지상 궤적·풋프린트는 3D와 동일하게 표시됩니다. 고도는 점 크기로, 2D 지구본에서는 표면에서 떨어진 거리로도 표현됩니다.</p>
+    <p class="note" id="flatModeNote" hidden>2D 보기에서도 궤도선·ISL 연결·지상국 연결·히트맵이 켜져 있으면 3D와 동일하게 표시됩니다. 고도는 점 크기로, 2D 지구본에서는 표면에서 떨어진 거리로도 표현됩니다.</p>
   </details>
   <div class="section scenario-mobile"><button id="saveScenarioMobileBtn" class="quiet">설정 저장</button><button id="loadScenarioMobileBtn" class="quiet">불러오기</button></div>
   </div>
@@ -190,11 +190,13 @@ function selectSatelliteId(id){state.selectedId=id;highlightSelection();renderSe
 function shellColorCss(id){if(!id)return '#eef3fb';const m=String(id).match(/(\d+)/),i=m?Math.max(0,(+m[1]-1)%SHELL_COLORS.length):0;return SHELL_COLORS[i]}
 function flatCanvasSize(canvas){if(typeof canvas.getBoundingClientRect!=='function'||typeof canvas.getContext!=='function')return{ctx:null,w:0,h:0};const r=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(r.width*dpr)||1;canvas.height=Math.round(r.height*dpr)||1;const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height}}
 const EARTH_R_KM=6378.137;
+function ecefToLLA(v){if(!v)return null;const x=+v[0],y=+v[1],z=+v[2],r=Math.hypot(x,y,z);if(!Number.isFinite(r)||r<=1e-6)return null;return{lat:Math.asin(Math.max(-1,Math.min(1,z/r)))*180/Math.PI,lon:Math.atan2(y,x)*180/Math.PI,alt:r-EARTH_R_KM};}
 function renderFlat(){
   if(state.viewMode==='3d')return;const canvas=$('flatCanvas'),{ctx,w,h}=flatCanvasSize(canvas);if(!w||!h)return;
   ctx.clearRect(0,0,w,h);
   const radius=Math.min(w*.4,h*.43),cx=w/2,cy=h*.46,d=Math.PI/180,map=state.viewMode==='2d-map';
   const sats=state.snapshot?.satellites||[],alts=sats.map(s=>+s.altitude_km).filter(Number.isFinite);
+  const viz=state.snapshot?.visualization||{};
   const altMin=alts.length?Math.min(...alts):null,altMax=alts.length?Math.max(...alts):null;
   const altSize=alt=>{if(alt==null||!Number.isFinite(+alt))return 2.6;if(altMax==null||altMax<=altMin)return 3.4;return 2.4+3.2*((+alt-altMin)/(altMax-altMin))};
   const project=(lat,lon,altKm)=>{
@@ -208,11 +210,37 @@ function renderFlat(){
     const glow=ctx.createRadialGradient(cx,cy,radius*.92,cx,cy,radius*1.13);glow.addColorStop(0,'#1c56704d');glow.addColorStop(1,'#10203600');ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,radius*1.13,0,Math.PI*2);ctx.fill();
     const fill=ctx.createRadialGradient(cx-radius*.4,cy-radius*.4,0,cx,cy,radius);fill.addColorStop(0,'#143952');fill.addColorStop(.7,'#0e273c');fill.addColorStop(1,'#0b192b');ctx.fillStyle=fill;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#37718a';ctx.lineWidth=1;ctx.stroke();
   }
-  function line(points,color,width=1,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);let prev=null;for(const [a,b] of points){const p=project(a,b);if(p.front){if(!prev||Math.abs(p.x-prev.x)>w/2)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);prev=p;}else prev=null;}ctx.stroke();ctx.setLineDash([]);}
+  function line(points,color,width=1,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);let prev=null;for(const pt of points){const p=project(pt[0],pt[1],pt[2]);if(p.front){if(!prev||Math.abs(p.x-prev.x)>w/2)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);prev=p;}else prev=null;}ctx.stroke();ctx.setLineDash([]);}
   for(let lat=-60;lat<=60;lat+=30)line(Array.from({length:181},(_,i)=>[lat,-180+i*2]),lat===0?'#34607a':'#25435a',.7);
   for(let lon=-180;lon<180;lon+=30)line(Array.from({length:91},(_,i)=>[-90+i*2,lon]),'#25435a',.7);
   for(const outline of state.worldOutlines)line(outline,'#45758a',.85);
+  if($('coverageOn').checked){
+    const heatList=(()=>{const src=state.snapshot?.heatmaps||state.snapshot?.heatmap;return Array.isArray(src)?src:(src?[src]:[])})();
+    const globalMax=Math.max(0,...heatList.map(hm=>hm?.max_visible||0)),opacity=+$('coverageOpacity').value;
+    for(const hm of heatList){
+      if(!hm?.visible_counts?.length)continue;
+      const rows=hm.visible_counts,latArr=hm.lat_deg,lonArr=hm.lon_deg,feature=state.boundaryFeatureMap.get(String(hm.area_code||'').toUpperCase());
+      for(let i=0;i<latArr.length-1;i++)for(let j=0;j<lonArr.length-1;j++){
+        const lat0=latArr[i],lat1=latArr[i+1],lon0=lonArr[j],lon1=lonArr[j+1];
+        if(feature&&!pointInGeometry((lon0+lon1)/2,(lat0+lat1)/2,feature.geometry))continue;
+        const c=heatColor(rows[i][j],globalMax);if(c[3]<=0)continue;
+        const corners=[[lat0,lon0],[lat0,lon1],[lat1,lon1],[lat1,lon0]].map(([la,lo])=>project(la,lo));
+        if(corners.some(q=>!q.front))continue;
+        ctx.beginPath();ctx.moveTo(corners[0].x,corners[0].y);for(let k=1;k<4;k++)ctx.lineTo(corners[k].x,corners[k].y);ctx.closePath();
+        ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${(c[3]/255*opacity).toFixed(3)})`;ctx.fill();
+      }
+    }
+  }
   if(map){ctx.font='11px system-ui';ctx.fillStyle='#7793ae';ctx.textAlign='center';for(let lon=-180;lon<=180;lon+=60){const p=project(0,lon);ctx.fillText(lon+'°',p.x,h-25);}ctx.textAlign='left';for(let lat=-60;lat<=60;lat+=30){const p=project(lat,-180);ctx.fillText(lat+'°',p.x+3,p.y-4);}}
+  if($('orbitOn').checked)for(const p of (viz.orbits||[])){
+    const pts=(p.ecef_km||[]).map(v=>{const l=ecefToLLA(v);return l?[l.lat,l.lon,l.alt]:null}).filter(Boolean);
+    if(pts.length<2)continue;
+    line(pts,p.shell_id?shellColorCss(p.shell_id)+'b3':'#5d83a79e',1.1);
+  }
+  if($('islOn').checked)for(const l of (viz.isl_links||[])){
+    const a=ecefToLLA(l.a_ecef_km),b=ecefToLLA(l.b_ecef_km);if(!a||!b)continue;
+    line([[a.lat,a.lon,a.alt],[b.lat,b.lon,b.alt]],l.shell_id?shellColorCss(l.shell_id)+'94':'#b88cff9e',1);
+  }
   const g=state.selectedGeometry;
   if(g?.ground_track?.segments_lon_lat_deg?.length)for(const seg of g.ground_track.segments_lon_lat_deg)line(seg.map(x=>[x[1],x[0]]),'#ff9f43',1.5,[4,4]);
   if(g?.footprint?.lon_lat_deg?.length){ctx.beginPath();let started=false;for(const [lon,lat] of g.footprint.lon_lat_deg){const p=project(lat,lon);if(!p.front){started=false;continue}if(!started){ctx.moveTo(p.x,p.y);started=true}else ctx.lineTo(p.x,p.y)}ctx.closePath();ctx.fillStyle='#42d3ff22';ctx.fill();ctx.strokeStyle='#42d3ffcc';ctx.lineWidth=1;ctx.stroke();}
@@ -224,6 +252,11 @@ function renderFlat(){
     ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,selected?r+2.4:r,0,Math.PI*2);ctx.fill();
     if(selected){ctx.strokeStyle='#ffe26aaa';ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,r+7,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#f7f2d8';ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(`${s.name} · ${num(s.altitude_km,0,' km')}`,Math.min(p.x+13,w-140),p.y-10);}
     state.flatHitPoints.push({x:p.x,y:p.y,id:s.id});
+  }
+  if($('accessOn').checked)for(const l of (viz.access_links||[])){
+    if(!l.visible)continue;
+    const sat=ecefToLLA(l.satellite_ecef_km);if(!sat)continue;
+    line([[l.station_lat_deg,l.station_lon_deg,0],[sat.lat,sat.lon,sat.alt]],'#60e8a3e6',2);
   }
   for(const st of stations()){const p=project(st.lat_deg,st.lon_deg);if(!p.front)continue;ctx.strokeStyle='#d3dbe9';ctx.fillStyle='#e8f4ff';ctx.lineWidth=1.5;ctx.strokeRect(p.x-4,p.y-4,8,8);ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(st.name,Math.min(p.x+10,w-65),p.y+14);}
   ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillStyle='#829bb5';ctx.fillText(state.snapshot?fmtTime(state.snapshot.time_sec):'',8,16);
