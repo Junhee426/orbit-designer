@@ -75,12 +75,39 @@ async def production_headers(request: Request, call_next):
 
 _COMPUTE_SLOTS = threading.BoundedSemaphore(SETTINGS.max_concurrent_jobs_per_worker)
 
+# Load counters for this worker process. These back the "load" section of
+# /api/server-info so operators and well-behaved clients can see how busy a
+# given worker is instead of guessing from 503 rates alone. Guarded by a lock
+# because bounded_compute runs on FastAPI's threadpool, where multiple
+# requests can update these concurrently.
+_load_lock = threading.Lock()
+_active_jobs = 0
+_accepted_jobs_total = 0
+_rejected_jobs_total = 0
+
+
+def _load_snapshot() -> dict:
+    with _load_lock:
+        return {
+            "active_jobs_this_worker": _active_jobs,
+            "max_concurrent_jobs_this_worker": SETTINGS.max_concurrent_jobs_per_worker,
+            "available_slots_this_worker": max(0, SETTINGS.max_concurrent_jobs_per_worker - _active_jobs),
+            "accepted_jobs_this_worker_total": _accepted_jobs_total,
+            "rejected_jobs_this_worker_total": _rejected_jobs_total,
+        }
+
 
 def bounded_compute(func):
     @wraps(func)
     def wrapped(req):
+        global _active_jobs, _accepted_jobs_total, _rejected_jobs_total
         if not _COMPUTE_SLOTS.acquire(blocking=False):
+            with _load_lock:
+                _rejected_jobs_total += 1
             raise HTTPException(503, "Server is busy. Please retry after the current analysis finishes.", headers={"Retry-After": "1"})
+        with _load_lock:
+            _active_jobs += 1
+            _accepted_jobs_total += 1
         try:
             result = func(req)
             if isinstance(result, dict) and ("coverage_summary" in result or "results" in result):
@@ -98,6 +125,8 @@ def bounded_compute(func):
                 }
             return result
         finally:
+            with _load_lock:
+                _active_jobs -= 1
             _COMPUTE_SLOTS.release()
     return wrapped
 
@@ -451,6 +480,12 @@ def server_info():
             "max_sim_samples": SETTINGS.max_sim_samples,
             "max_trade_cases": SETTINGS.max_trade_cases,
         },
+        # NOTE: these counters live in this worker process's memory only. With
+        # WEB_CONCURRENCY/RENDER_WEB_CONCURRENCY > 1, a load balancer or proxy
+        # may route this request to any one of several workers, each with its
+        # own independent counters -- this is a per-worker sample, not a
+        # cluster-wide total. See SERVICE_EXPANSION_REVIEW.md.
+        "load": _load_snapshot(),
     }
 
 
