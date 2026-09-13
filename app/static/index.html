@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a1220">
 <title>Test Orbit Designer V1.2.0</title>
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a1220'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23e6392e' stroke-width='2'/%3E%3Cellipse cx='16' cy='16' rx='14' ry='5' transform='rotate(-35 16 16)' fill='none' stroke='%23e6392e' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/workspace.css">
 <script src="/static/plotly.min.js"></script>
 </head>
@@ -94,6 +95,56 @@
 'use strict';
 const $=id=>document.getElementById(id);const CVER='1.144';const CDN_BASE=`https://cesium.com/downloads/cesiumjs/releases/${CVER}/Build/Cesium/`;const LOCAL_BASE='/static/vendor/cesium/';
 const OFFLINE_EARTH='/static/earth_blue_marble_2048.jpg';const SAT_MODELS={default:'/static/kleo_satellite.glb',compact:'/static/kleo_satellite_compact.glb',broadband:'/static/kleo_satellite_broadband.glb',flatpanel:'/static/kleo_satellite_flatpanel.glb'};const SHELL_COLORS=['#5db8ff','#ff9f43','#a78bfa','#64d6a2','#ff6b8a','#ffd166'];function shellColor(id,alpha=1){if(!id)return Cesium.Color.WHITE.withAlpha(alpha);const m=String(id).match(/(\d+)/),i=m?Math.max(0,(+m[1]-1)%SHELL_COLORS.length):0;return Cesium.Color.fromCssColorString(SHELL_COLORS[i]).withAlpha(alpha)};const ARCGIS='https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
+// Shared Earth globe renderer (identical across K-LEO services): textured orthographic
+// sphere using the same Blue Marble texture, projection math, and atmosphere glow.
+let earthTexture=null;const globeCache={};
+function observerFrame(latDeg,lonDeg){
+  const lat=latDeg*Math.PI/180,lon=lonDeg*Math.PI/180;
+  return{up:[Math.cos(lat)*Math.cos(lon),Math.cos(lat)*Math.sin(lon),Math.sin(lat)],
+    east:[-Math.sin(lon),Math.cos(lon),0],
+    north:[-Math.sin(lat)*Math.cos(lon),-Math.sin(lat)*Math.sin(lon),Math.cos(lat)]};
+}
+(function loadEarthTexture(){
+  const img=new Image();
+  img.onload=()=>{
+    const off=document.createElement('canvas');off.width=img.width;off.height=img.height;
+    const c=off.getContext('2d',{willReadFrequently:true});c.drawImage(img,0,0);
+    earthTexture={width:img.width,height:img.height,data:c.getImageData(0,0,img.width,img.height).data};
+    globeCache.key=null;renderFlat();
+  };
+  img.src=OFFLINE_EARTH;
+})();
+function paintGlobeTexture(ctx,cx,cy,radius,dpr,latDeg,lonDeg){
+  const size=Math.max(32,Math.min(650,Math.round(radius*2*dpr)));
+  const key=[size,latDeg,lonDeg,!!earthTexture].join(':');
+  if(globeCache.key!==key){
+    const off=document.createElement('canvas');off.width=off.height=size;
+    const octx=off.getContext('2d');
+    const pixels=octx.createImageData(size,size),d=pixels.data,r=size/2,frame=observerFrame(latDeg,lonDeg),tex=earthTexture;
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const ex=(x+.5-r)/r,ny=-(y+.5-r)/r,dist=ex*ex+ny*ny;
+      if(dist>1)continue;
+      const uz=Math.sqrt(1-dist),index=(y*size+x)*4;
+      const worldX=frame.east[0]*ex+frame.north[0]*ny+frame.up[0]*uz;
+      const worldY=frame.east[1]*ex+frame.north[1]*ny+frame.up[1]*uz;
+      const worldZ=frame.east[2]*ex+frame.north[2]*ny+frame.up[2]*uz;
+      const lon=Math.atan2(worldY,worldX),lat=Math.asin(Math.max(-1,Math.min(1,worldZ)));
+      const light=.42+.58*uz;
+      if(tex){
+        const tx=Math.min(tex.width-1,Math.floor((lon/(2*Math.PI)+.5)*tex.width));
+        const ty=Math.min(tex.height-1,Math.max(0,Math.floor((.5-lat/Math.PI)*tex.height)));
+        const offset=(ty*tex.width+tx)*4;
+        d[index]=tex.data[offset]*light;d[index+1]=tex.data[offset+1]*light;d[index+2]=tex.data[offset+2]*light;
+      }else{d[index]=20*light;d[index+1]=75*light;d[index+2]=120*light;}
+      d[index+3]=Math.min(255,(1-dist)*size*180);
+    }
+    octx.putImageData(pixels,0,0);globeCache.key=key;globeCache.canvas=off;
+  }
+  const gradient=ctx.createRadialGradient(cx,cy,radius*.96,cx,cy,radius*1.09);
+  gradient.addColorStop(0,'rgba(43,150,201,.24)');gradient.addColorStop(1,'rgba(43,150,201,0)');
+  ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(cx,cy,radius*1.09,0,Math.PI*2);ctx.fill();
+  ctx.drawImage(globeCache.canvas,cx-radius,cy-radius,radius*2,radius*2);
+}
 const verificationTLE=`VANGUARD 1\n1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667`;
 const DEFAULT_SHELLS=[
 {id:'SH1',name:'Core 1280 km',altitude_km:1280,inclination_deg:42,planes:8,sats_per_plane:16,phasing:1,j2:true},
@@ -188,11 +239,11 @@ function setModeUI(){invalidateAnalysis();invalidatePreview();const m=mode(),tle
 function ecefCart(xyz){return Cesium.Cartesian3.fromElements(xyz[0]*1000,xyz[1]*1000,xyz[2]*1000)}
 function selectSatelliteId(id){state.selectedId=id;highlightSelection();renderSelected();fetchSelectedGeometry();renderFlat()}
 function shellColorCss(id){if(!id)return '#eef3fb';const m=String(id).match(/(\d+)/),i=m?Math.max(0,(+m[1]-1)%SHELL_COLORS.length):0;return SHELL_COLORS[i]}
-function flatCanvasSize(canvas){if(typeof canvas.getBoundingClientRect!=='function'||typeof canvas.getContext!=='function')return{ctx:null,w:0,h:0};const r=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(r.width*dpr)||1;canvas.height=Math.round(r.height*dpr)||1;const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height}}
+function flatCanvasSize(canvas){if(typeof canvas.getBoundingClientRect!=='function'||typeof canvas.getContext!=='function')return{ctx:null,w:0,h:0,dpr:1};const r=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(r.width*dpr)||1;canvas.height=Math.round(r.height*dpr)||1;const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height,dpr}}
 const EARTH_R_KM=6378.137;
 function ecefToLLA(v){if(!v)return null;const x=+v[0],y=+v[1],z=+v[2],r=Math.hypot(x,y,z);if(!Number.isFinite(r)||r<=1e-6)return null;return{lat:Math.asin(Math.max(-1,Math.min(1,z/r)))*180/Math.PI,lon:Math.atan2(y,x)*180/Math.PI,alt:r-EARTH_R_KM};}
 function renderFlat(){
-  if(state.viewMode==='3d')return;const canvas=$('flatCanvas'),{ctx,w,h}=flatCanvasSize(canvas);if(!w||!h)return;
+  if(state.viewMode==='3d')return;const canvas=$('flatCanvas'),{ctx,w,h,dpr}=flatCanvasSize(canvas);if(!w||!h)return;
   ctx.clearRect(0,0,w,h);
   const radius=Math.min(w*.4,h*.43),cx=w/2,cy=h*.46,d=Math.PI/180,map=state.viewMode==='2d-map';
   const sats=state.snapshot?.satellites||[],alts=sats.map(s=>+s.altitude_km).filter(Number.isFinite);
@@ -206,10 +257,7 @@ function renderFlat(){
     const rr=altKm==null?radius:radius*(1+Math.min(Math.max(+altKm,0),4000)/EARTH_R_KM);
     return{x:cx+rr*Math.cos(a)*Math.sin(b),y:cy-rr*(Math.cos(c)*Math.sin(a)-Math.sin(c)*Math.cos(a)*Math.cos(b)),front:z>=0};
   };
-  if(!map){
-    const glow=ctx.createRadialGradient(cx,cy,radius*.92,cx,cy,radius*1.13);glow.addColorStop(0,'#1c56704d');glow.addColorStop(1,'#10203600');ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,radius*1.13,0,Math.PI*2);ctx.fill();
-    const fill=ctx.createRadialGradient(cx-radius*.4,cy-radius*.4,0,cx,cy,radius);fill.addColorStop(0,'#143952');fill.addColorStop(.7,'#0e273c');fill.addColorStop(1,'#0b192b');ctx.fillStyle=fill;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#37718a';ctx.lineWidth=1;ctx.stroke();
-  }
+  if(!map)paintGlobeTexture(ctx,cx,cy,radius,dpr,state.flatCamera.lat,state.flatCamera.lon);
   function line(points,color,width=1,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);let prev=null;for(const pt of points){const p=project(pt[0],pt[1],pt[2]);if(p.front){if(!prev||Math.abs(p.x-prev.x)>w/2)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);prev=p;}else prev=null;}ctx.stroke();ctx.setLineDash([]);}
   for(let lat=-60;lat<=60;lat+=30)line(Array.from({length:181},(_,i)=>[lat,-180+i*2]),lat===0?'#34607a':'#25435a',.7);
   for(let lon=-180;lon<180;lon+=30)line(Array.from({length:91},(_,i)=>[-90+i*2,lon]),'#25435a',.7);
