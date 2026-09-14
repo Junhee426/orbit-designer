@@ -12,7 +12,7 @@ function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 export class Globe {
   constructor(canvas,worldLines=[]) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
-    this.lat = 25; this.lon = 120; this.full = false; this.earthStyle = 'image'; this.worldLines = worldLines; this.cached = null;
+    this.lat = 25; this.lon = 120; this.full = false; this.mode = 'globe'; this.earthStyle = 'image'; this.worldLines = worldLines; this.cached = null;
     this.texture = null; this.snapshot = null; this.orbits = [];
     const img = new Image();
     img.onload = () => {
@@ -40,6 +40,7 @@ export class Globe {
   set(snapshot, orbits) { this.snapshot = snapshot; this.orbits = orbits; this.draw(); }
   center(lat, lon) { this.lat = lat; this.lon = lon; this.cached = null; this.draw(); }
   setFull(value) { this.full = value; this.cached = null; this.draw(); }
+  setMode(value) { const next = value === 'map' ? 'map' : 'globe'; if (next === this.mode) return; this.mode = next; this.cached = null; this.draw(); }
   setEarthStyle(value) { const next = value === 'outline' ? 'outline' : 'image'; if(next === this.earthStyle) return; this.earthStyle = next; this.cached = null; this.draw(); }
   background(size, frame) {
     const key = [size, this.lat, this.lon, !!this.texture].join(':');
@@ -75,44 +76,59 @@ export class Globe {
     const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
     if (this.canvas.width !== pw || this.canvas.height !== ph) { this.canvas.width = pw; this.canvas.height = ph; }
     const ctx = this.ctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    const map = this.mode === 'map';
     const shown = this.orbits.filter(o => this.full || o.group === 'LEO');
     const maxRadius = Math.max(...shown.map(o => o.radius)) / EARTH_RADIUS;
     const radius = Math.min(w * .44, h * .43) / maxRadius;
     const cx = w / 2, cy = h / 2 + 2, frame = observerFrame(this.lat, this.lon);
-    const project = p => ({ x: cx + dot(p, frame.east) / EARTH_RADIUS * radius,
+    const globeProject = p => ({ x: cx + dot(p, frame.east) / EARTH_RADIUS * radius,
       y: cy - dot(p, frame.north) / EARTH_RADIUS * radius, z: dot(p, frame.up) / EARTH_RADIUS });
-    const unoccluded = q => q.z >= 0 || Math.hypot(q.x - cx, q.y - cy) >= radius;
-    const orbitPlanes = new Map();
-    shown.forEach(o => { const key = o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
-    ctx.lineWidth = .65;
-    for (const o of orbitPlanes.values()) {
-      ctx.strokeStyle = o.group === 'LEO' ? 'rgba(72,212,240,.20)' : o.group === 'GNSS' ? 'rgba(246,183,91,.25)' : 'rgba(193,160,255,.26)';
-      ctx.beginPath(); let prior = false;
-      for (let i = 0; i <= 120; i++) {
-        const q = project(orbitState(o, this.snapshot.minutes * 60, TWO_PI * i / 120).position);
-        const show = unoccluded(q);
+    const mapProject = p => {
+      const r = Math.hypot(...p) || 1;
+      const lat = Math.asin(Math.max(-1, Math.min(1, p[2] / r))) * 180 / Math.PI, lon = Math.atan2(p[1], p[0]) * 180 / Math.PI;
+      return { x: 18 + (lon + 180) / 360 * (w - 36), y: 20 + (90 - lat) / 180 * (h - 60), z: 1 };
+    };
+    const project = map ? mapProject : globeProject;
+    const unoccluded = map ? () => true : q => q.z >= 0 || Math.hypot(q.x - cx, q.y - cy) >= radius;
+    // In map mode nothing is occluded, so a line breaks on a big horizontal jump (antimeridian wrap) instead.
+    const stroke = (points, color, width) => {
+      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = width;
+      let prior = false, lastX = null;
+      for (const p of points) {
+        const q = project(p);
+        const show = unoccluded(q) && !(map && lastX !== null && Math.abs(q.x - lastX) > w / 2);
         if (show && prior) ctx.lineTo(q.x, q.y); else if (show) ctx.moveTo(q.x, q.y);
-        prior = show;
+        prior = show; lastX = q.x;
       }
       ctx.stroke();
+    };
+    const orbitPlanes = new Map();
+    shown.forEach(o => { const key = o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
+    for (const o of orbitPlanes.values()) {
+      const color = o.group === 'LEO' ? 'rgba(72,212,240,.20)' : o.group === 'GNSS' ? 'rgba(246,183,91,.25)' : 'rgba(193,160,255,.26)';
+      stroke(Array.from({ length: 121 }, (_, i) => orbitState(o, this.snapshot.minutes * 60, TWO_PI * i / 120).position), color, .65);
     }
-    if (this.earthStyle === 'image') {
+    const surface = (lat, lon) => { lat *= Math.PI / 180; lon *= Math.PI / 180; const c = Math.cos(lat); return [EARTH_RADIUS*c*Math.cos(lon),EARTH_RADIUS*c*Math.sin(lon),EARTH_RADIUS*Math.sin(lat)]; };
+    if (!map && this.earthStyle === 'image') {
       const gradient = ctx.createRadialGradient(cx, cy, radius * .96, cx, cy, radius * 1.09);
       gradient.addColorStop(0, 'rgba(43,150,201,.24)'); gradient.addColorStop(1, 'rgba(43,150,201,0)');
       ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(cx, cy, radius * 1.09, 0, TWO_PI); ctx.fill();
       const textureSize = Math.max(32, Math.min(650, Math.round(radius * 2 * dpr)));
       ctx.drawImage(this.background(textureSize, frame), cx - radius, cy - radius, radius * 2, radius * 2);
     } else {
-      ctx.fillStyle = '#091a28'; ctx.strokeStyle = '#5f8aa3'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, TWO_PI); ctx.fill(); ctx.stroke();
-      const surface = (lat, lon) => { lat *= Math.PI / 180; lon *= Math.PI / 180; const c = Math.cos(lat); return [EARTH_RADIUS*c*Math.cos(lon),EARTH_RADIUS*c*Math.sin(lon),EARTH_RADIUS*Math.sin(lat)]; };
-      const line = (points, color, width) => { ctx.beginPath(); ctx.strokeStyle=color;ctx.lineWidth=width;let prior=false;for(const [lat,lon] of points){const q=project(surface(lat,lon)),show=q.z>=0;if(show&&prior)ctx.lineTo(q.x,q.y);else if(show)ctx.moveTo(q.x,q.y);prior=show;}ctx.stroke(); };
-      for(let lat=-60;lat<=60;lat+=30)line(Array.from({length:121},(_,i)=>[lat,-180+i*3]),lat===0?'#355d76':'#203f55',.7);
-      for(let lon=-180;lon<180;lon+=30)line(Array.from({length:61},(_,i)=>[-90+i*3,lon]),'#203f55',.7);
-      for(const outline of this.worldLines)line(outline,'#5f8aa3',.9);
+      if (!map) { ctx.fillStyle = '#091a28'; ctx.strokeStyle = '#5f8aa3'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, radius, 0, TWO_PI); ctx.fill(); ctx.stroke(); }
+      for(let lat=-60;lat<=60;lat+=30)stroke(Array.from({length:121},(_,i)=>surface(lat,-180+i*3)),lat===0?'#355d76':'#203f55',.7);
+      for(let lon=-180;lon<180;lon+=30)stroke(Array.from({length:61},(_,i)=>surface(-90+i*3,lon)),'#203f55',.7);
+      for(const outline of this.worldLines)stroke(outline.map(([lat,lon])=>surface(lat,lon)),'#5f8aa3',.9);
+    }
+    if (map) {
+      ctx.font = '11px system-ui'; ctx.fillStyle = '#7793ae'; ctx.textAlign = 'center';
+      for (let lon = -180; lon <= 180; lon += 60) { const p = project(surface(0, lon)); ctx.fillText(lon + '°', p.x, h - 6); }
+      ctx.textAlign = 'left';
+      for (let lat = -60; lat <= 60; lat += 30) { const p = project(surface(lat, -180)); ctx.fillText(lat + '°', p.x + 3, p.y - 4); }
     }
     const obs = project(this.snapshot.observer);
-    if (obs.z >= 0) {
+    if (map || obs.z >= 0) {
       for (const sat of this.snapshot.satellites) {
         if (!this.full || sat.group !== 'LEO' || !sat.navUsed) continue;
         const q = project(sat.position); if (!unoccluded(q)) continue;
@@ -128,7 +144,7 @@ export class Globe {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
       const chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
-      ctx.globalAlpha = q.z < 0 ? .4 : sat.group === 'LEO' && !navUsed ? .55 : 1;
+      ctx.globalAlpha = map ? 1 : q.z < 0 ? .4 : sat.group === 'LEO' && !navUsed ? .55 : 1;
       ctx.fillStyle = chosen ? '#f6b75b' : COLORS[sat.group];
       ctx.beginPath(); ctx.arc(q.x, q.y, chosen ? 4.8 : navUsed ? 3.2 : 1.8, 0, TWO_PI); ctx.fill();
       if (chosen) {
@@ -137,7 +153,7 @@ export class Globe {
       }
     }
     ctx.globalAlpha = 1;
-    if (obs.z >= 0) {
+    if (map || obs.z >= 0) {
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#48d4f0'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(obs.x, obs.y, 4, 0, TWO_PI); ctx.fill(); ctx.stroke();
       ctx.font = '14px system-ui'; ctx.fillText(this.snapshot.location.name, Math.min(w - 80, obs.x + 10), Math.max(20, obs.y + 17));
