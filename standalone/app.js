@@ -116,7 +116,7 @@ function draw(){
     ]);
     const edges=scenario.display.isl?islEdges(states):[],cells=[];
     if(scenario.display.heatmap)for(const code of scenario.selection.country_codes){const country=catalog.countries.find(c=>c.code===code),feature=boundaries.features.find(f=>[f.properties.code,f.properties.ADM0_A3,f.properties.ISO_A3,f.properties.adm0_a3].includes(code));cells.push(...coverageGrid(states,country,cfg.commElevation,feature?.geometry));}
-    viewer.update(current,orbits,scenario,observers,selected,edges,cells);$('time').value=seconds;text('time-label','T + '+hms(seconds));
+    viewer.update(current,orbits,scenario,observers,selected,edges,cells,$('nav-performance').open);$('time').value=seconds;text('time-label','T + '+hms(seconds));
     text('route-result','현재 시각의 경로를 계산하세요. 전파지연만 포함하며 Multi-shell은 층 내부 연결입니다.');
   }catch(e){pause();error(e.message);}
 }
@@ -135,6 +135,7 @@ function setView(next){
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.tab)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
+$('nav-performance').addEventListener('toggle',draw);
 $('workspace-action').addEventListener('click',()=>setView($('workspace-action').dataset.go));
 modeInput.addEventListener('change',()=>{if(modeInput.value==='multi_shell'&&!$('shells').children.length)addShellRow({id:'SH1',altitude:1280,inclination:42,planes:8,satellitesPerPlane:16,phasing:1,j2:true});modeFields();});
 $('configuration').addEventListener('input',()=>{clearTimeout(editing);editing=setTimeout(applyInputs,250);});
