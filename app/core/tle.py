@@ -56,8 +56,13 @@ def _tle_epoch(line1: str) -> datetime:
         day_of_year = float(line1[20:32])
     except ValueError as exc:
         raise TLEParseError("Invalid TLE epoch field.") from exc
+    if not math.isfinite(day_of_year):
+        raise TLEParseError("TLE epoch must be finite.")
     year = 1900 + yy if yy >= 57 else 2000 + yy
-    return datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=day_of_year - 1.0)
+    try:
+        return datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=day_of_year - 1.0)
+    except (ValueError, OverflowError) as exc:
+        raise TLEParseError("TLE epoch is outside the supported datetime range.") from exc
 
 
 def _record(name: str | None, line1: str, line2: str) -> TLERecord:
@@ -87,6 +92,8 @@ def _record(name: str | None, line1: str, line2: str) -> TLERecord:
             mm = float(parts[7])
     except ValueError as exc:
         raise TLEParseError("Invalid numeric field in TLE line 2.") from exc
+    if not all(math.isfinite(value) for value in (inc, raan, ecc, argp, ma, mm)):
+        raise TLEParseError("TLE orbital elements must be finite.")
     if mm <= 0.0:
         raise TLEParseError("TLE mean motion must be positive.")
     return TLERecord(

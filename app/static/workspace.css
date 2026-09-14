@@ -12,7 +12,22 @@
 @media(max-width:680px){.appbar{padding:14px 16px}.identity{width:100%}.workspace-nav{width:100%;margin:0}.workspace-nav button{flex:1}.shell{display:flex;flex-direction:column}.sidebar{border-right:0;border-bottom:1px solid var(--line)}.main{padding:20px 16px}#settingsPanel>.section{margin-top:16px;padding-top:16px}.viewer-wrap{height:440px;min-height:360px}.summary-stat{padding:12px}.summary-stat strong{font-size:19px}.preview-caption{align-items:flex-start;flex-direction:column;gap:6px}.card{padding:16px}.analysis-empty{padding:32px 16px}.workflow-steps{gap:8px}.timeline{gap:7px}.row{gap:12px}.chart{height:290px}.version{font-size:11px}.scenario-mobile{display:flex!important}}
 .scenario-mobile{display:none}
 .settings-toggle{display:none}
+.shell-card-head{justify-content:space-between}.shell-id{font-size:12px;font-weight:650;color:var(--accent);overflow-wrap:anywhere}.shell-actions{display:flex;gap:6px;flex-shrink:0}.shell-card .field label input,.shell-card .field label select{display:block;margin-top:6px}.shell-card .field{margin:7px 0}.shell-card input:invalid{border-color:#ff9f43}.shell-total{padding-top:8px;border-top:1px solid var(--line);line-height:1.6}#shellSummary{margin-top:12px}#openMultiShellBtn{margin-top:10px}
 body[data-workspace="analysis"] #settingsPanel>section[data-view="analysis"]:nth-child(2){margin-top:0;padding-top:0;border-top:0}
 @media(max-width:960px){.scenario-mobile{display:flex}}
 @media(max-width:680px){.settings-toggle{display:flex;width:100%;justify-content:space-between;background:#14263b}.sidebar{padding:12px 16px}#settingsPanel[data-expanded="false"]{display:none}#settingsPanel[data-expanded="true"]{padding-top:18px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+.service-visibility { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px; font-size: 12px; }
+.service-visibility strong { color: #48d4f0; }
+.service-visibility small { flex-basis: 100%; opacity: .7; }
+.service-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #697586; }
+.service-dot.active { width: 9px; height: 9px; background: #48d4f0; box-shadow: 0 0 6px #48d4f080; }
+.service-dot.selected { background: #ffe26a; }
+.map-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px}
+.map-controls label{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.map-controls select{padding:7px 10px;border:1px solid #3a506b;border-radius:6px;background:#0a1625;color:var(--text);font:inherit}
+.map-controls span{margin-left:auto;color:var(--muted);font-size:11px}
+
+.flat-host[hidden],.cesium-host[hidden],#flatLegend[hidden]{display:none!important}
+#flatLegend:not([hidden]){display:block;pointer-events:none}
+#flatLegendSub{display:block;margin-top:4px}

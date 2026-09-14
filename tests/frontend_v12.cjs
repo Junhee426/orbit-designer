@@ -1,6 +1,5 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-let html=fs.readFileSync('app/static/index.html','utf8');
-let code=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(x=>x[1]).find(x=>x.includes('function startPlayback'));
+let code=fs.readFileSync('app/static/app.js','utf8');
 const testExports='state,startPlayback,stopPlayback,invalidateAnalysis,applyServiceSelection,runAnalysis,saveScenario,loadScenario,exportResultsCSV,csvCell,recordAnalysis';
 // Bind real UI functions to a deterministic DOM/network harness, without launching a browser.
 code=code.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/,`window.testAPI={${testExports}};\n})();`);

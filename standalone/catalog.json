@@ -1,0 +1,533 @@
+{
+  "countries": [
+    {
+      "code": "BHR",
+      "name": "Bahrain",
+      "name_ko": "바레인",
+      "region": "Middle East",
+      "bbox": [
+        50.3,
+        25.7,
+        50.9,
+        26.4
+      ],
+      "cities": [
+        {
+          "name": "Manama",
+          "lat_deg": 26.2235,
+          "lon_deg": 50.5876
+        }
+      ]
+    },
+    {
+      "code": "KWT",
+      "name": "Kuwait",
+      "name_ko": "쿠웨이트",
+      "region": "Middle East",
+      "bbox": [
+        46.4,
+        28.4,
+        48.6,
+        30.2
+      ],
+      "cities": [
+        {
+          "name": "Kuwait City",
+          "lat_deg": 29.3759,
+          "lon_deg": 47.9774
+        }
+      ]
+    },
+    {
+      "code": "OMN",
+      "name": "Oman",
+      "name_ko": "오만",
+      "region": "Middle East",
+      "bbox": [
+        51.8,
+        16.4,
+        59.9,
+        26.6
+      ],
+      "cities": [
+        {
+          "name": "Muscat",
+          "lat_deg": 23.588,
+          "lon_deg": 58.3829
+        },
+        {
+          "name": "Salalah",
+          "lat_deg": 17.019,
+          "lon_deg": 54.0897
+        }
+      ]
+    },
+    {
+      "code": "QAT",
+      "name": "Qatar",
+      "name_ko": "카타르",
+      "region": "Middle East",
+      "bbox": [
+        50.7,
+        24.3,
+        51.8,
+        26.3
+      ],
+      "cities": [
+        {
+          "name": "Doha",
+          "lat_deg": 25.2854,
+          "lon_deg": 51.531
+        }
+      ]
+    },
+    {
+      "code": "SAU",
+      "name": "Saudi Arabia",
+      "name_ko": "사우디아라비아",
+      "region": "Middle East",
+      "bbox": [
+        34.3,
+        16.0,
+        55.9,
+        32.5
+      ],
+      "cities": [
+        {
+          "name": "Riyadh",
+          "lat_deg": 24.7136,
+          "lon_deg": 46.6753
+        },
+        {
+          "name": "Jeddah",
+          "lat_deg": 21.4858,
+          "lon_deg": 39.1925
+        },
+        {
+          "name": "Dammam",
+          "lat_deg": 26.4207,
+          "lon_deg": 50.0888
+        }
+      ]
+    },
+    {
+      "code": "ARE",
+      "name": "United Arab Emirates",
+      "name_ko": "아랍에미리트",
+      "region": "Middle East",
+      "bbox": [
+        51.4,
+        22.3,
+        56.6,
+        26.3
+      ],
+      "cities": [
+        {
+          "name": "Dubai",
+          "lat_deg": 25.2048,
+          "lon_deg": 55.2708
+        },
+        {
+          "name": "Abu Dhabi",
+          "lat_deg": 24.4539,
+          "lon_deg": 54.3773
+        },
+        {
+          "name": "Fujairah",
+          "lat_deg": 25.1288,
+          "lon_deg": 56.3265
+        }
+      ]
+    },
+    {
+      "code": "JPN",
+      "name": "Japan",
+      "name_ko": "일본",
+      "region": "Northeast Asia",
+      "bbox": [
+        128.5,
+        30.0,
+        146.5,
+        46.5
+      ],
+      "cities": [
+        {
+          "name": "Tokyo",
+          "lat_deg": 35.6762,
+          "lon_deg": 139.6503
+        },
+        {
+          "name": "Osaka",
+          "lat_deg": 34.6937,
+          "lon_deg": 135.5023
+        },
+        {
+          "name": "Fukuoka",
+          "lat_deg": 33.5902,
+          "lon_deg": 130.4017
+        }
+      ]
+    },
+    {
+      "code": "KOR",
+      "name": "South Korea",
+      "name_ko": "대한민국",
+      "region": "Northeast Asia",
+      "bbox": [
+        126.0,
+        33.0,
+        130.0,
+        39.0
+      ],
+      "cities": [
+        {
+          "name": "Seoul",
+          "lat_deg": 37.5665,
+          "lon_deg": 126.978
+        },
+        {
+          "name": "Busan",
+          "lat_deg": 35.1796,
+          "lon_deg": 129.0756
+        },
+        {
+          "name": "Jeju",
+          "lat_deg": 33.4996,
+          "lon_deg": 126.5312
+        }
+      ]
+    },
+    {
+      "code": "BRN",
+      "name": "Brunei",
+      "name_ko": "브루나이",
+      "region": "Southeast Asia",
+      "bbox": [
+        114.0,
+        4.0,
+        115.5,
+        5.2
+      ],
+      "cities": [
+        {
+          "name": "Bandar Seri Begawan",
+          "lat_deg": 4.9031,
+          "lon_deg": 114.9398
+        }
+      ]
+    },
+    {
+      "code": "KHM",
+      "name": "Cambodia",
+      "name_ko": "캄보디아",
+      "region": "Southeast Asia",
+      "bbox": [
+        102.0,
+        10.0,
+        108.0,
+        15.0
+      ],
+      "cities": [
+        {
+          "name": "Phnom Penh",
+          "lat_deg": 11.5564,
+          "lon_deg": 104.9282
+        },
+        {
+          "name": "Siem Reap",
+          "lat_deg": 13.3671,
+          "lon_deg": 103.8448
+        }
+      ]
+    },
+    {
+      "code": "IDN",
+      "name": "Indonesia",
+      "name_ko": "인도네시아",
+      "region": "Southeast Asia",
+      "bbox": [
+        94.5,
+        -11.5,
+        141.5,
+        6.5
+      ],
+      "cities": [
+        {
+          "name": "Jakarta",
+          "lat_deg": -6.2088,
+          "lon_deg": 106.8456
+        },
+        {
+          "name": "Surabaya",
+          "lat_deg": -7.2575,
+          "lon_deg": 112.7521
+        },
+        {
+          "name": "Makassar",
+          "lat_deg": -5.1477,
+          "lon_deg": 119.4327
+        }
+      ]
+    },
+    {
+      "code": "LAO",
+      "name": "Laos",
+      "name_ko": "라오스",
+      "region": "Southeast Asia",
+      "bbox": [
+        100.0,
+        13.5,
+        108.0,
+        23.0
+      ],
+      "cities": [
+        {
+          "name": "Vientiane",
+          "lat_deg": 17.9757,
+          "lon_deg": 102.6331
+        },
+        {
+          "name": "Luang Prabang",
+          "lat_deg": 19.8833,
+          "lon_deg": 102.1333
+        }
+      ]
+    },
+    {
+      "code": "MYS",
+      "name": "Malaysia",
+      "name_ko": "말레이시아",
+      "region": "Southeast Asia",
+      "bbox": [
+        99.0,
+        0.5,
+        119.5,
+        7.8
+      ],
+      "cities": [
+        {
+          "name": "Kuala Lumpur",
+          "lat_deg": 3.139,
+          "lon_deg": 101.6869
+        },
+        {
+          "name": "Kota Kinabalu",
+          "lat_deg": 5.9804,
+          "lon_deg": 116.0735
+        },
+        {
+          "name": "Kuching",
+          "lat_deg": 1.5533,
+          "lon_deg": 110.3592
+        }
+      ]
+    },
+    {
+      "code": "MMR",
+      "name": "Myanmar",
+      "name_ko": "미얀마",
+      "region": "Southeast Asia",
+      "bbox": [
+        91.0,
+        9.0,
+        102.0,
+        29.0
+      ],
+      "cities": [
+        {
+          "name": "Yangon",
+          "lat_deg": 16.8409,
+          "lon_deg": 96.1735
+        },
+        {
+          "name": "Mandalay",
+          "lat_deg": 21.9588,
+          "lon_deg": 96.0891
+        },
+        {
+          "name": "Naypyidaw",
+          "lat_deg": 19.7633,
+          "lon_deg": 96.0785
+        }
+      ]
+    },
+    {
+      "code": "PHL",
+      "name": "Philippines",
+      "name_ko": "필리핀",
+      "region": "Southeast Asia",
+      "bbox": [
+        116.5,
+        4.5,
+        127.0,
+        20.5
+      ],
+      "cities": [
+        {
+          "name": "Manila",
+          "lat_deg": 14.5995,
+          "lon_deg": 120.9842
+        },
+        {
+          "name": "Cebu",
+          "lat_deg": 10.3157,
+          "lon_deg": 123.8854
+        },
+        {
+          "name": "Davao",
+          "lat_deg": 7.1907,
+          "lon_deg": 125.4553
+        }
+      ]
+    },
+    {
+      "code": "SGP",
+      "name": "Singapore",
+      "name_ko": "싱가포르",
+      "region": "Southeast Asia",
+      "bbox": [
+        103.55,
+        1.1,
+        104.1,
+        1.55
+      ],
+      "cities": [
+        {
+          "name": "Singapore",
+          "lat_deg": 1.3521,
+          "lon_deg": 103.8198
+        }
+      ]
+    },
+    {
+      "code": "THA",
+      "name": "Thailand",
+      "name_ko": "태국",
+      "region": "Southeast Asia",
+      "bbox": [
+        96.5,
+        5.0,
+        106.5,
+        21.0
+      ],
+      "cities": [
+        {
+          "name": "Bangkok",
+          "lat_deg": 13.7563,
+          "lon_deg": 100.5018
+        },
+        {
+          "name": "Chiang Mai",
+          "lat_deg": 18.7883,
+          "lon_deg": 98.9853
+        },
+        {
+          "name": "Phuket",
+          "lat_deg": 7.8804,
+          "lon_deg": 98.3923
+        }
+      ]
+    },
+    {
+      "code": "VNM",
+      "name": "Vietnam",
+      "name_ko": "베트남",
+      "region": "Southeast Asia",
+      "bbox": [
+        101.5,
+        8.0,
+        110.2,
+        24.0
+      ],
+      "cities": [
+        {
+          "name": "Hanoi",
+          "lat_deg": 21.0278,
+          "lon_deg": 105.8342
+        },
+        {
+          "name": "Ho Chi Minh City",
+          "lat_deg": 10.8231,
+          "lon_deg": 106.6297
+        },
+        {
+          "name": "Da Nang",
+          "lat_deg": 16.0544,
+          "lon_deg": 108.2022
+        }
+      ]
+    }
+  ],
+  "regions": [
+    {
+      "code": "KLEO_CORE",
+      "name": "K-LEO Core",
+      "name_ko": "K-LEO 핵심",
+      "countries": [
+        "KOR",
+        "ARE",
+        "SGP"
+      ]
+    },
+    {
+      "code": "NE_ASIA",
+      "name": "Korea + Japan",
+      "name_ko": "한·일",
+      "countries": [
+        "KOR",
+        "JPN"
+      ]
+    },
+    {
+      "code": "SEA",
+      "name": "Southeast Asia",
+      "name_ko": "동남아",
+      "countries": [
+        "SGP",
+        "IDN",
+        "PHL",
+        "VNM",
+        "THA",
+        "MYS",
+        "BRN",
+        "KHM",
+        "LAO",
+        "MMR"
+      ]
+    },
+    {
+      "code": "MIDDLE_EAST",
+      "name": "Middle East",
+      "name_ko": "중동",
+      "countries": [
+        "ARE",
+        "SAU",
+        "OMN",
+        "QAT",
+        "KWT",
+        "BHR"
+      ]
+    },
+    {
+      "code": "KLEO_EXPANDED",
+      "name": "K-LEO Expanded",
+      "name_ko": "K-LEO 확대",
+      "countries": [
+        "KOR",
+        "JPN",
+        "ARE",
+        "SAU",
+        "OMN",
+        "QAT",
+        "KWT",
+        "BHR",
+        "SGP",
+        "IDN",
+        "PHL",
+        "VNM",
+        "THA",
+        "MYS"
+      ]
+    }
+  ]
+}

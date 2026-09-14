@@ -15,7 +15,7 @@ from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_ra
 from .ground import elevation_and_range
 from .sampling import sample_times, sampled_metrics
 from .visualization import (
-    access_links, nearest_neighbor_isl_links, tle_orbit_paths,
+    access_links, annotate_service_visibility, nearest_neighbor_isl_links, tle_orbit_paths,
     walker_isl_links, walker_orbit_paths,
 )
 from .tle import TLERecord, altitude_km as tle_altitude_km, build_satrecs, parse_tle_text, propagate_satrecs, propagate_tles
@@ -105,6 +105,7 @@ def walker_snapshot(
     heatmaps = instantaneous_coverage_heatmaps(pos_ecef, coverage_areas, min_elevation_deg, heatmap_points) if heatmap else []
     hm = heatmaps[0] if heatmaps else None
     station_list = list(stations or [])
+    annotate_service_visibility(satellites, pos_ecef, station_list)
     viz = {
         "orbits": walker_orbit_paths(cfg, t_sec, orbit_samples) if include_orbits else [],
         "isl_links": walker_isl_links(cfg, pos_eci, pos_ecef, ids) if include_isl else [],
@@ -196,6 +197,7 @@ def tle_snapshot(
     hm = heatmaps[0] if heatmaps else None
     ids = [f"NORAD-{rec.norad_id}" for rec in records]
     station_list = list(stations or [])
+    annotate_service_visibility(satellites, ecef, station_list)
     viz = {
         "orbits": tle_orbit_paths(records, when, orbit_samples) if include_orbits else [],
         "isl_links": nearest_neighbor_isl_links(p, ecef, ids) if include_isl else [],
@@ -263,25 +265,8 @@ def tle_station_timelines(
 
     timelines = []
     for item in by_station:
-        counts = np.asarray(item["visible_counts"], dtype=int)
-        handovers = 0
-        prev = None
-        for sat_id in item["best_ids"]:
-            if sat_id is None:
-                continue
-            if prev is not None and sat_id != prev:
-                handovers += 1
-            prev = sat_id
-        duration_hr = (times[-1] - times[0]) / 3600.0 if len(times) > 1 else 0.0
-        max_run = cur = 0
-        for c in counts:
-            if c == 0:
-                cur += 1
-                max_run = max(max_run, cur)
-            else:
-                cur = 0
         st = item["station"]
-        timelines.append({
+        row = {
             "name": st.name,
             "lat_deg": st.lat_deg,
             "lon_deg": st.lon_deg,
@@ -291,16 +276,9 @@ def tle_station_timelines(
             "best_elevation_deg": item["best_elevation"],
             "best_satellite_ids": item["best_ids"],
             "best_slant_range_km": item["ranges"],
-            "availability": float(np.mean(counts > 0)) if len(counts) else 0.0,
-            "avg_visible": float(np.mean(counts)) if len(counts) else 0.0,
-            "max_visible": int(counts.max()) if len(counts) else 0,
-            "handover_count": int(handovers),
-            "handovers_per_hour": float(handovers / duration_hr) if duration_hr > 0 else 0.0,
-            "max_sampled_outage_sec": float(max_run * step_sec),
-        })
-
-    for row in timelines:
+        }
         row.update(sampled_metrics(row["best_satellite_ids"], row["visible_counts"], times))
+        timelines.append(row)
 
     summary = {
         "mean_availability": float(np.mean([x["availability"] for x in timelines])) if timelines else 0.0,

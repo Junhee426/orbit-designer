@@ -156,6 +156,20 @@ def nearest_neighbor_isl_links(positions_inertial: np.ndarray, positions_ecef: n
     return result
 
 
+def annotate_service_visibility(satellites: list[dict], positions_ecef: np.ndarray, stations: Iterable[GroundStation]) -> None:
+    """Mark every satellite visible from at least one service observation site.
+
+    This is geometric access, independent of rendered links or RF link budgets.
+    """
+    counts = np.zeros(len(satellites), dtype=int)
+    for station in stations:
+        elev, ranges = elevation_and_range(positions_ecef, station)
+        counts += np.isfinite(elev) & np.isfinite(ranges) & (elev >= max(0.0, station.min_elevation_deg))
+    for satellite, count in zip(satellites, counts):
+        satellite["service_visible"] = bool(count)
+        satellite["service_station_count"] = int(count)
+
+
 def access_links(positions_ecef: np.ndarray, sat_ids: list[str], stations: Iterable[GroundStation]) -> list[dict]:
     links: list[dict] = []
     for st in stations:

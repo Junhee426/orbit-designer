@@ -10,12 +10,11 @@ from .eclipse import eclipse_geometry, instantaneous_eclipse, sun_unit_vector_ec
 from .lifetime import orbital_lifetime_estimate
 from .sampling import sample_times
 from .geometry import walker_orbital_geometry
-from .ground import elevation_and_range
 from .heatmap import instantaneous_coverage_heatmaps
-from .models import ConstellationConfig, GroundStation
+from .models import ConstellationConfig
 from .orbit import eci_to_ecef, ecef_to_latlon, orbital_period_s, mean_motion_rad_s, j2_raan_rate_rad_s
 from .snapshot import parse_utc
-from .visualization import access_links, walker_isl_links, walker_orbit_paths
+from .visualization import access_links, annotate_service_visibility, walker_isl_links, walker_orbit_paths
 
 
 def normalize_shell_id(value: str, index: int) -> str:
@@ -83,16 +82,12 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
     st=list(stations or [])
     eclipse_summary={"epoch_utc":epoch.isoformat().replace("+00:00","Z"),"sunlit_count":int((~eclipsed).sum()),"eclipsed_count":int(eclipsed.sum()),
         "note":"원뿔형(반영향 제외) 그림자 모델, 구형 지구 가정. 배터리·태양전지판 용량은 모델링하지 않습니다."}
+    annotate_service_visibility(satellites, pos_ecef, st)
     return {"mode":"multi_shell","time_sec":float(t_sec),"satellites":satellites,"heatmap":heatmaps[0] if heatmaps else None,"heatmaps":heatmaps,
             "shells":[{"id":normalize_shell_id(x[0],i),"name":x[1],**x[2].to_dict(),
                        "orbit_lifetime_estimate":orbital_lifetime_estimate(x[2].altitude_km)} for i,x in enumerate(shells)],
             "visualization":{"orbits":orbit_paths,"isl_links":isl_links,"access_links":access_links(pos_ecef,ids,st) if include_access and st else []},
             "eclipse":eclipse_summary,"errors":[]}
-
-
-def multi_shell_station_timeline(shells, station: GroundStation, times_sec: np.ndarray):
-    ids = combined_state(shells, 0.0)[0]
-    return timelines_from_states([station], times_sec, ids, lambda t: combined_state(shells, t)[3])[0]
 
 
 def run_multi_shell_simulation(shells, stations, duration_min: float, step_sec: float):
