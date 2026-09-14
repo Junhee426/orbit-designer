@@ -24,6 +24,34 @@ test('multi-shell, TLE and cancellation stay usable',async({page})=>{
   await page.locator('#duration').fill('10');await page.locator('[data-tab="trade"]').click();await page.locator('#run-trade').click();await expect(page.locator('#status')).toHaveText('분석 완료');await expect(page.locator('#trade-table tbody tr')).toHaveCount(6);
   await page.locator('#sweep-axis').selectOption('altitude');await page.locator('#sweep').click();await expect(page.locator('#sweep-note')).toContainText('순간 성능');await expect(page.locator('#sweep-rate svg')).toHaveCount(1);
 });
+test('comm-only domain hides nav UI and narrows tables; satellite style controls and canvas-mode layers work',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('5');await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');
+  const navCols=await page.locator('#station-table thead th').count();
+  await page.locator('[data-tab="trade"]').click();await page.locator('#duration').fill('5');await page.locator('#run-trade').click();await expect(page.locator('#status')).toHaveText('분석 완료');
+  const navTradeHeaders=await page.locator('#trade-table thead th').allTextContents();
+  await page.locator('button[data-domain="comm"]').click();
+  await expect(page.locator('#nav-settings')).toBeHidden();
+  await page.locator('[data-tab="design"]').click();await expect(page.locator('#nav-performance')).toBeHidden();await expect(page.locator('#workspace-title')).toHaveText('통신망 궤도 배치');
+  await page.locator('[data-tab="analysis"]').click();await expect(page.locator('#analysis-nav-performance')).toBeHidden();
+  const commCols=await page.locator('#station-table thead th').count();expect(commCols).toBeLessThan(navCols);
+  await page.locator('[data-tab="trade"]').click();
+  const commTradeHeaders=await page.locator('#trade-table thead th').allTextContents();
+  expect(commTradeHeaders.length).toBeLessThan(navTradeHeaders.length);expect(commTradeHeaders.join(' ')).not.toContain('항법');
+  await page.locator('button[data-domain="commNav"]').click();await expect(page.locator('#nav-settings')).toBeVisible();
+  // satellite style controls persist across a view-mode switch
+  await page.locator('[data-tab="design"]').click();
+  await page.locator('#sat-shape').selectOption('diamond');await page.locator('#sat-size').fill('2');await page.locator('#orbit-width').fill('2.5');
+  await expect(page.locator('#sat-size-value')).toHaveText('2.00×');await expect(page.locator('#orbit-width-value')).toHaveText('2.5×');
+  await page.locator('#map-mode').selectOption('2d-map');await expect(page.locator('#sat-shape')).toHaveValue('diamond');
+  // canvas-mode layers: ISL/heatmap toggles and satellite selection shouldn't error in the lightweight renderer
+  await page.locator('#show-isl').check();await page.locator('#show-heatmap').check();
+  await page.locator('#satellite').selectOption({index:1});
+  await page.waitForTimeout(200);
+  await page.locator('#map-mode').selectOption('2d-globe');await page.waitForTimeout(200);
+  expect(errors).toEqual([]);
+});
 test('mobile layout runs with locally served assets',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');await page.locator('#toggle-settings').click();await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('5');await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);expect(overflow).toBe(false);await page.screenshot({path:'outputs/standalone-mobile.png',fullPage:true});

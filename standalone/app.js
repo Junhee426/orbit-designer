@@ -55,8 +55,8 @@ function syncForm(){
   $('shells').replaceChildren();scenario.configuration.shells.forEach(addShellRow);
   $('custom-observers').replaceChildren();scenario.custom_observers.forEach(addObserverRow);
   $('map-mode').value=scenario.display.mode;$('earth-style').value=scenario.display.earthStyle;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
-  $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',format(scenario.display.satSize,2)+'×');
-  $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',format(scenario.display.orbitWidth,1)+'×');
+  $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');
+  $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');
   modeFields();
 }
 function modeFields(){const mode=modeInput.value;$('shell-section').hidden=mode!=='multi_shell';$('tle-section').hidden=mode!=='tle';
@@ -177,8 +177,8 @@ $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode')
 $('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
 $('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-shape').value;draw();});
-$('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',format(scenario.display.satSize,2)+'×');draw();});
-$('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',format(scenario.display.orbitWidth,1)+'×');draw();});
+$('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');draw();});
+$('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');draw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});
 $('toggle-settings').addEventListener('click',()=>{const hidden=$('configuration').classList.toggle('collapsed');text('toggle-settings',hidden?'설정 펼치기':'설정 접기');$('toggle-settings').setAttribute('aria-expanded',String(!hidden));});
 

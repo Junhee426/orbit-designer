@@ -50,6 +50,17 @@ test('scenario v2 preserves custom observers and defaults only to Korea',()=>{
   const restored=importScenario(JSON.parse(JSON.stringify(s)),catalog);assert.deepEqual(restored,validateScenario(s,catalog));assert.equal(observersFor(restored,catalog).at(-1).lat,-25.5);
   const display=structuredClone(s);display.display.mode='2D';assert.equal(analysisKey(display),analysisKey(s));display.configuration.j2=false;assert.notEqual(analysisKey(display),analysisKey(s));
 });
+test('domain/satellite-style display fields validate bounds and default cleanly from legacy scenarios',()=>{
+  const s=defaultScenario();assert.equal(s.display.domain,'commNav');assert.equal(s.display.satShape,'circle');assert.equal(s.display.satSize,1);assert.equal(s.display.orbitWidth,1);assert.equal(s.display.mode,'3d');
+  assert.throws(()=>validateScenario({...s,display:{...s.display,satShape:'triangle'}},catalog));
+  assert.throws(()=>validateScenario({...s,display:{...s.display,satSize:0.1}},catalog));
+  assert.throws(()=>validateScenario({...s,display:{...s.display,orbitWidth:10}},catalog));
+  assert.throws(()=>validateScenario({...s,display:{...s.display,domain:'nav-only'}},catalog));
+  const legacyMode=validateScenario({...s,display:{...s.display,mode:'2D'}},catalog);assert.equal(legacyMode.display.mode,'2d');
+  const {domain,satShape,satSize,orbitWidth,...legacyDisplay}=s.display;
+  const upgraded=validateScenario({...s,display:legacyDisplay},catalog);
+  assert.equal(upgraded.display.domain,'commNav');assert.equal(upgraded.display.satShape,'circle');assert.equal(upgraded.display.satSize,1);assert.equal(upgraded.display.orbitWidth,1);
+});
 test('legacy scenario imports preserve explicit coordinates and unknown versions fail',()=>{
   const v1=read('../../examples/scenario_v1_2.json');v1.configuration.stations=[{name:'User',lat_deg:1.234,lon_deg:5.678}];
   const s=importScenario(v1,catalog);assert.equal(s.custom_observers[0].lat,1.234);assert.deepEqual(s.selection.country_codes,[]);
