@@ -46,7 +46,7 @@ test('nonuniform endpoint weighting, missing navigation, handover and reconnect 
   assert.deepEqual(sampleTimes(2.5,60),[0,60,120,150]);assert.throws(()=>sampleTimes(1440,1));
 });
 test('scenario v2 preserves custom observers and defaults only to Korea',()=>{
-  const s=defaultScenario();assert.deepEqual(s.selection.country_codes,['KOR']);s.custom_observers=[{id:'custom:site',name:'남쪽 지점',lat:-25.5,lon:179.9}];s.active_observer='custom:site';s.configuration.navShare=22;
+  const s=defaultScenario();assert.deepEqual(s.selection.country_codes,['KOR']);s.custom_observers=[{id:'custom:site',name:'남쪽 지점',lat:-25.5,lon:179.9}];s.active_observer='custom:site';s.configuration.navShare=22;s.display.earthStyle='outline';
   const restored=importScenario(JSON.parse(JSON.stringify(s)),catalog);assert.deepEqual(restored,validateScenario(s,catalog));assert.equal(observersFor(restored,catalog).at(-1).lat,-25.5);
   const display=structuredClone(s);display.display.mode='2D';assert.equal(analysisKey(display),analysisKey(s));display.configuration.j2=false;assert.notEqual(analysisKey(display),analysisKey(s));
 });

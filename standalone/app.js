@@ -5,7 +5,7 @@ import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
 
 const $=id=>document.getElementById(id);
-const [catalog,boundaries]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json())]);
+const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
 let scenario=defaultScenario(),orbits=[],observers=[],current=null,seconds=0,selected=null,worker=null,job=0,playing=null,editing=null,result=null,tradeResult=null,view='design';
 let lastOrbitKey='',lastSatKey='';
 const format=(v,d=2)=>Number.isFinite(v)?v.toLocaleString('ko-KR',{maximumFractionDigits:d}):'—';
@@ -54,7 +54,7 @@ function syncForm(){
   $('tle-text').value=scenario.configuration.tleText;$('start-utc').value=scenario.configuration.startUtc;
   $('shells').replaceChildren();scenario.configuration.shells.forEach(addShellRow);
   $('custom-observers').replaceChildren();scenario.custom_observers.forEach(addObserverRow);
-  $('map-mode').value=scenario.display.mode;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
+  $('map-mode').value=scenario.display.mode;$('earth-style').value=scenario.display.earthStyle;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
   modeFields();
 }
 function modeFields(){const mode=modeInput.value;$('shell-section').hidden=mode!=='multi_shell';$('tle-section').hidden=mode!=='tle';
@@ -87,7 +87,7 @@ function refreshConfiguration(){
 function activeObserver(){return observers.find(o=>o.id===scenario.active_observer)||observers[0];}
 function cards(id,items){$(id).replaceChildren(...items.map(([label,value,unit='',note=''])=>{const a=document.createElement('article');a.className='metric';const l=document.createElement('span');l.textContent=label;const v=document.createElement('strong');v.textContent=value;const u=document.createElement('small');u.textContent=' '+unit;v.append(u);const p=document.createElement('p');p.textContent=note;a.append(l,v,p);return a;}));}
 function details(id,items){$(id).replaceChildren(...items.map(([label,value])=>{const div=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;div.append(dt,dd);return div;}));}
-const viewer=new OrbitViewer($('globe'),id=>{selected=id;$('satellite').value=id;draw();});
+const viewer=new OrbitViewer($('globe'),id=>{selected=id;$('satellite').value=id;draw();},worldOutline.lines);
 text('map-note',$('map-note').textContent+' 격자는 국가별 사각 분석 범위(해역 포함)이며 도시 가시율과 구분합니다.');
 function draw(){
   try{
@@ -153,6 +153,7 @@ $('time').addEventListener('input',()=>{pause();seconds=Number($('time').value);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 $('recenter').addEventListener('click',()=>{const o=activeObserver();viewer.center(o.lon,o.lat);});
 $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode').value;draw();});
+$('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});
 $('toggle-settings').addEventListener('click',()=>{const hidden=$('configuration').classList.toggle('collapsed');text('toggle-settings',hidden?'설정 펼치기':'설정 접기');$('toggle-settings').setAttribute('aria-expanded',String(!hidden));});

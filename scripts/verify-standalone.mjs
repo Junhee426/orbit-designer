@@ -20,7 +20,7 @@ async function checkPath(target) {
 const required = [
   'index.html', 'app.js', 'engine.js', 'analysis.js', 'analysis-worker.js', 'scenario.js',
   'viewer.js', 'geometry.js', 'rendering.js', 'boot.js', 'styles.css', 'integrated.css',
-  'catalog.json', 'boundaries.geojson', 'earth.jpg', 'example.tle', 'build.json',
+  'catalog.json', 'boundaries.geojson', 'world.json', 'earth.jpg', 'example.tle', 'build.json',
   'vendor/satellite.es.js', 'vendor/satellite-LICENSE.md', 'vendor/cesium-LICENSE.md',
   'vendor/cesium/Cesium.js', 'vendor/cesium/Widgets/widgets.css',
   'vendor/cesium/Workers', 'vendor/cesium/Assets', 'vendor/cesium/ThirdParty',
@@ -38,7 +38,7 @@ for (const name of await readdir(publish)) {
   // This app has no backend endpoints; a local path regression should fail the build.
   assert(!/\bfetch\(\s*["'`]\/api\//.test(source), `Backend dependency in ${name}`);
 }
-for (const name of ['catalog.json', 'boundaries.geojson', 'build.json']) {
+for (const name of ['catalog.json', 'boundaries.geojson', 'world.json', 'build.json']) {
   JSON.parse(await readFile(resolve(publish, name), 'utf8'));
 }
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));

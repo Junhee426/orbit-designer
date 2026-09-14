@@ -2,8 +2,8 @@ import {Globe} from './rendering.js';
 import {orbitState} from './engine.js';
 import {footprint,groundTrack} from './geometry.js';
 export class OrbitViewer {
-  constructor(container,onSelect) {
-    this.container=container;this.onSelect=onSelect;this.points=new Map();this.layers=[];this.selected=null;
+  constructor(container,onSelect,worldLines=[]) {
+    this.container=container;this.onSelect=onSelect;this.worldLines=worldLines;this.points=new Map();this.layers=[];this.outlineEntities=[];this.selected=null;this.earthStyle='image';this.appliedEarthStyle=null;
     try {
       const C=globalThis.Cesium;if(!C)throw Error('지도 라이브러리 없음');this.C=C;
       C.Ion.defaultAccessToken='';
@@ -11,19 +11,42 @@ export class OrbitViewer {
       this.viewer.scene.globe.baseColor=C.Color.fromCssColorString('#12304a');
       this.viewer.scene.backgroundColor=C.Color.fromCssColorString('#081322');
       this.viewer.scene.globe.enableLighting=false;
-      C.SingleTileImageryProvider.fromUrl(new URL('./earth.jpg',import.meta.url).href).then(p=>{this.viewer.imageryLayers.addImageryProvider(p);this.viewer.scene.requestRender();}).catch(()=>{});
+      C.SingleTileImageryProvider.fromUrl(new URL('./earth.jpg',import.meta.url).href).then(p=>{this.imageryLayer=this.viewer.imageryLayers.addImageryProvider(p);this.applyEarthStyle(this.earthStyle,true);}).catch(()=>{});
       this.viewer.screenSpaceEventHandler.setInputAction(click=>{const p=this.viewer.scene.pick(click.position);if(p?.id?.satId)this.onSelect(p.id.satId);},C.ScreenSpaceEventType.LEFT_CLICK);
       this.center(127,36);
     } catch(error) {
       this.viewer?.destroy();this.viewer=null;container.replaceChildren();
-      const canvas=document.createElement('canvas');canvas.style.cssText='width:100%;height:100%';container.append(canvas);this.fallback=new Globe(canvas);
+      const canvas=document.createElement('canvas');canvas.style.cssText='width:100%;height:100%';container.append(canvas);this.fallback=new Globe(canvas,worldLines);
       document.getElementById('map-note').textContent='이 환경에서는 간단 지구본으로 표시합니다. 전체 3D 지도에는 WebGL이 필요합니다.';
     }
   }
   center(lon,lat){if(this.viewer)this.viewer.camera.setView({destination:this.C.Cartesian3.fromDegrees(lon,lat,14000000)});else this.fallback.center(lat,lon);}
+  ensureEarthOutline(){
+    if(!this.viewer||this.outlineEntities.length)return;
+    const C=this.C,v=this.viewer,add=(points,color,width)=>{
+      if(points.length<2)return;
+      const positions=C.Cartesian3.fromDegreesArrayHeights(points.flatMap(([lat,lon])=>[lon,lat,2500]));
+      this.outlineEntities.push(v.entities.add({show:false,polyline:{positions,width,material:C.Color.fromCssColorString(color),arcType:C.ArcType.NONE}}));
+    };
+    for(let lat=-60;lat<=60;lat+=30)add(Array.from({length:121},(_,i)=>[lat,-180+i*3]),lat===0?'#355d76':'#203f55',.7);
+    for(let lon=-180;lon<180;lon+=30)add(Array.from({length:61},(_,i)=>[-90+i*3,lon]),'#203f55',.7);
+    for(const line of this.worldLines)add(line,'#5f8aa3',1.1);
+  }
+  applyEarthStyle(style='image',force=false){
+    this.earthStyle=style==='outline'?'outline':'image';this.container.dataset.earthStyle=this.earthStyle;
+    if(!this.viewer){this.fallback?.setEarthStyle(this.earthStyle);return;}
+    if(!force&&this.appliedEarthStyle===this.earthStyle)return;
+    const outline=this.earthStyle==='outline';if(outline)this.ensureEarthOutline();
+    if(this.imageryLayer)this.imageryLayer.show=!outline;
+    this.viewer.scene.globe.baseColor=this.C.Color.fromCssColorString(outline?'#091a28':'#12304a');
+    for(const entity of this.outlineEntities)entity.show=outline;
+    this.appliedEarthStyle=this.earthStyle;
+    this.viewer.scene.requestRender();
+  }
   update(snapshot,orbits,scenario,observers,selectedId,edges=[],cells=[],showNavigation=false) {
     this.selected=selectedId;
     this.container.dataset.navigation=showNavigation?'visible':'hidden';
+    this.applyEarthStyle(scenario.display.earthStyle);
     if(!this.viewer){this.fallback.setFull(showNavigation);this.fallback.set(snapshot,orbits);return;}
     const C=this.C,v=this.viewer;
     const mode=scenario.display.mode==='2D'?C.SceneMode.SCENE2D:C.SceneMode.SCENE3D;

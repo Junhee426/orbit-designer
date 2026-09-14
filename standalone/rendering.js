@@ -10,9 +10,9 @@ function node(tag, attributes = {}, text) {
 }
 function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 export class Globe {
-  constructor(canvas) {
+  constructor(canvas,worldLines=[]) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
-    this.lat = 25; this.lon = 120; this.full = false; this.cached = null;
+    this.lat = 25; this.lon = 120; this.full = false; this.earthStyle = 'image'; this.worldLines = worldLines; this.cached = null;
     this.texture = null; this.snapshot = null; this.orbits = [];
     const img = new Image();
     img.onload = () => {
@@ -40,6 +40,7 @@ export class Globe {
   set(snapshot, orbits) { this.snapshot = snapshot; this.orbits = orbits; this.draw(); }
   center(lat, lon) { this.lat = lat; this.lon = lon; this.cached = null; this.draw(); }
   setFull(value) { this.full = value; this.cached = null; this.draw(); }
+  setEarthStyle(value) { const next = value === 'outline' ? 'outline' : 'image'; if(next === this.earthStyle) return; this.earthStyle = next; this.cached = null; this.draw(); }
   background(size, frame) {
     const key = [size, this.lat, this.lon, !!this.texture].join(':');
     if (this.cached?.key === key) return this.cached.canvas;
@@ -95,11 +96,21 @@ export class Globe {
       }
       ctx.stroke();
     }
-    const gradient = ctx.createRadialGradient(cx, cy, radius * .96, cx, cy, radius * 1.09);
-    gradient.addColorStop(0, 'rgba(43,150,201,.24)'); gradient.addColorStop(1, 'rgba(43,150,201,0)');
-    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(cx, cy, radius * 1.09, 0, TWO_PI); ctx.fill();
-    const textureSize = Math.max(32, Math.min(650, Math.round(radius * 2 * dpr)));
-    ctx.drawImage(this.background(textureSize, frame), cx - radius, cy - radius, radius * 2, radius * 2);
+    if (this.earthStyle === 'image') {
+      const gradient = ctx.createRadialGradient(cx, cy, radius * .96, cx, cy, radius * 1.09);
+      gradient.addColorStop(0, 'rgba(43,150,201,.24)'); gradient.addColorStop(1, 'rgba(43,150,201,0)');
+      ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(cx, cy, radius * 1.09, 0, TWO_PI); ctx.fill();
+      const textureSize = Math.max(32, Math.min(650, Math.round(radius * 2 * dpr)));
+      ctx.drawImage(this.background(textureSize, frame), cx - radius, cy - radius, radius * 2, radius * 2);
+    } else {
+      ctx.fillStyle = '#091a28'; ctx.strokeStyle = '#5f8aa3'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, TWO_PI); ctx.fill(); ctx.stroke();
+      const surface = (lat, lon) => { lat *= Math.PI / 180; lon *= Math.PI / 180; const c = Math.cos(lat); return [EARTH_RADIUS*c*Math.cos(lon),EARTH_RADIUS*c*Math.sin(lon),EARTH_RADIUS*Math.sin(lat)]; };
+      const line = (points, color, width) => { ctx.beginPath(); ctx.strokeStyle=color;ctx.lineWidth=width;let prior=false;for(const [lat,lon] of points){const q=project(surface(lat,lon)),show=q.z>=0;if(show&&prior)ctx.lineTo(q.x,q.y);else if(show)ctx.moveTo(q.x,q.y);prior=show;}ctx.stroke(); };
+      for(let lat=-60;lat<=60;lat+=30)line(Array.from({length:121},(_,i)=>[lat,-180+i*3]),lat===0?'#355d76':'#203f55',.7);
+      for(let lon=-180;lon<180;lon+=30)line(Array.from({length:61},(_,i)=>[-90+i*3,lon]),'#203f55',.7);
+      for(const outline of this.worldLines)line(outline,'#5f8aa3',.9);
+    }
     const obs = project(this.snapshot.observer);
     if (obs.z >= 0) {
       for (const sat of this.snapshot.satellites) {

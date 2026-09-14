@@ -22,7 +22,7 @@ Node는 개발·설치와 로컬 정적 파일 제공에 사용합니다. 위성
 - Walker F와 J2 RAAN 보정. 같은 ECEF 위치·속도로 지도·통신·항법 계산.
 - 한국만 초기 선택. 18개 국가 카탈로그, 국가당 1–3개 도시, 직접 입력 관측지.
 - 초기 화면과 지도에는 통신 LEO 위성군·가시 위성·처리량·링크 마진을 먼저 제시하고, 항법 설정·GNSS/지역항법 궤도·성능 결과는 펼침 영역으로 확장.
-- 로컬 Cesium 3D/2D 지도, 위성 선택, 지상궤적·풋프린트, ISL, 가시 위성 수 격자, 하늘보기.
+- 로컬 Cesium 3D/2D 지도, 지구 이미지/윤곽선 보기, 위성 선택, 지상궤적·풋프린트, ISL, 가시 위성 수 격자, 하늘보기.
 - 기하 가시율·가시 위성 수·최장 표본 단절·기하 핸드오버·재접속.
 - 통신 처리량·RF 마진·C/N·C/N₀·Eb/N₀·FSPL·도플러·편도 지연·통신 목표 충족률.
 - GNSS / GNSS+LEO / 지역항법 포함 구성별 HRMS, 융합 VRMS·PDOP, 유효해 비율·항법 목표 충족률·동시 충족률.
@@ -81,3 +81,5 @@ Playwright 검증은 기본 Windows Edge 또는 다른 OS의 Playwright Chromium
 - `vendor/`: 고정 버전 Cesium·satellite.js 및 라이선스. `package-lock.json` 기반 빌드로 준비.
 
 CesiumJS는 Apache-2.0, satellite.js는 MIT 라이선스이며 배포물에 해당 라이선스를 포함합니다. UI·항법/통신 계산은 로컬 commnav 프로젝트를 바탕으로 통합했습니다.
+
+`world.json`은 다른 로컬 K-LEO 프로젝트와 같은 Natural Earth 1:110m 저해상도 윤곽 데이터입니다. Natural Earth 자료는 public domain이며 윤곽선 보기에서만 사용합니다.
