@@ -53,7 +53,7 @@ def satellite_positions_eci(cfg: ConstellationConfig, t_sec: float, elements=Non
     return np.stack((x, y, z), axis=-1)
 
 
-def satellite_states_ecef(cfg: ConstellationConfig, times_sec: np.ndarray) -> np.ndarray:
+def satellite_states_ecef(cfg: ConstellationConfig, times_sec: np.ndarray, elements=None) -> np.ndarray:
     """ECEF positions for every satellite at every requested time, shape (T, N, 3).
 
     Vectorised equivalent of calling satellite_positions_eci()+eci_to_ecef()
@@ -61,7 +61,9 @@ def satellite_states_ecef(cfg: ConstellationConfig, times_sec: np.ndarray) -> np
     coverage.multi_station_summary, which broadcasts a station axis on top
     of this) should chunk times_sec themselves and accumulate the results.
     """
-    _, _, raan0, u0 = walker_elements(cfg)
+    if elements is None:
+        elements = walker_elements(cfg)
+    _, _, raan0, u0 = elements
     r = orbital_radius_km(cfg.altitude_km)
     n = mean_motion_rad_s(cfg.altitude_km)
     inc = math.radians(cfg.inclination_deg)

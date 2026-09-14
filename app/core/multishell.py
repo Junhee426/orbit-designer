@@ -4,7 +4,7 @@ import math
 import numpy as np
 
 from .constants import C_KM_S, MU_EARTH_KM3_S2, R_EARTH_KM
-from .constellation import satellite_positions_eci, satellite_ids
+from .constellation import satellite_positions_eci, satellite_ids, walker_elements
 from .coverage import timelines_from_states, summarize_timelines
 from .eclipse import eclipse_geometry, instantaneous_eclipse, sun_unit_vector_eci
 from .lifetime import orbital_lifetime_estimate
@@ -22,19 +22,32 @@ def normalize_shell_id(value: str, index: int) -> str:
     return raw or f"SH{index+1}"
 
 
-def combined_state(shells: list[tuple[str, str, ConstellationConfig]], t_sec: float):
-    ids, meta, eci_parts, ecef_parts = [], [], [], []
-    for i, (shell_id, shell_name, cfg) in enumerate(shells):
+def _shell_positions(shells: list[tuple[str, str, ConstellationConfig]], t_sec: float, elements_list=None):
+    """Per-timestep propagation only: no shell-id normalization or satellite_ids/label rebuilding,
+    since those don't depend on t_sec. Callers driving a per-timestep loop (multi_shell_station_timeline,
+    run_multi_shell_simulation) compute elements_list once and reuse it across every sample."""
+    if elements_list is None:
+        elements_list = [walker_elements(cfg) for _, _, cfg in shells]
+    eci_parts, ecef_parts = [], []
+    for (_, _, cfg), elements in zip(shells, elements_list):
+        eci = satellite_positions_eci(cfg, t_sec, elements)
+        eci_parts.append(eci); ecef_parts.append(eci_to_ecef(eci, t_sec))
+    if not eci_parts:
+        return np.empty((0,3)), np.empty((0,3))
+    return np.concatenate(eci_parts), np.concatenate(ecef_parts)
+
+
+def combined_state(shells: list[tuple[str, str, ConstellationConfig]], t_sec: float, elements_list=None):
+    if elements_list is None:
+        elements_list = [walker_elements(cfg) for _, _, cfg in shells]
+    ids, meta = [], []
+    for i, ((shell_id, shell_name, cfg), elements) in enumerate(zip(shells, elements_list)):
         sid = normalize_shell_id(shell_id, i)
-        eci = satellite_positions_eci(cfg, t_sec)
-        ecef = eci_to_ecef(eci, t_sec)
-        local_ids = satellite_ids(cfg)
+        local_ids = satellite_ids(cfg, elements)
         ids.extend([f"{sid}-{x}" for x in local_ids])
         meta.extend([(sid, shell_name, cfg, x) for x in local_ids])
-        eci_parts.append(eci); ecef_parts.append(ecef)
-    if not eci_parts:
-        return [], [], np.empty((0,3)), np.empty((0,3))
-    return ids, meta, np.concatenate(eci_parts), np.concatenate(ecef_parts)
+    eci, ecef = _shell_positions(shells, t_sec, elements_list)
+    return ids, meta, eci, ecef
 
 
 def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_sec: float, min_elevation_deg: float = 20.0, heatmap: bool = True, heatmap_points: int = 28, stations=None, include_orbits: bool = True, include_isl: bool = True, include_access: bool = True, orbit_samples: int = 96, coverage_areas=None, start_utc: str | None = None) -> dict:
@@ -47,15 +60,17 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
     for shell_idx,(shell_id,shell_name,cfg) in enumerate(shells):
         sid=normalize_shell_id(shell_id,shell_idx)
         count=cfg.total_satellites
-        pcount=cfg.planes; spp=cfg.sats_per_plane
+        spp=cfg.sats_per_plane
         n=mean_motion_rad_s(cfg.altitude_km); rr=j2_raan_rate_rad_s(cfg.altitude_km,cfg.inclination_deg) if cfg.j2 else 0.0
-        local_ids=satellite_ids(cfg)
+        elements=walker_elements(cfg)
+        local_ids=satellite_ids(cfg,elements)
+        _,_,raan0_by_sat,u0_by_sat=elements
         # derive display plane/slot from deterministic ordering
         for j in range(count):
             plane=j//spp+1; slot=j%spp+1
-            # derive RAAN and u consistently with Walker convention
-            raan0=2*math.pi*(plane-1)/pcount
-            u0=2*math.pi*(slot-1)/spp+2*math.pi*cfg.phasing*(plane-1)/count
+            # RAAN/u0 come from the single walker_elements() source of truth (constellation.py),
+            # instead of being re-derived here and risking silent drift from that convention.
+            raan0=float(raan0_by_sat[j]); u0=float(u0_by_sat[j])
             raan_deg=float(math.degrees(raan0+rr*t_sec)%360)
             satellites.append({
                 "id":f"{sid}-{local_ids[j]}","name":f"{sid} · {local_ids[j]}","source":"Multi-shell Walker",
@@ -92,8 +107,9 @@ def multi_shell_snapshot(shells: list[tuple[str, str, ConstellationConfig]], t_s
 
 def run_multi_shell_simulation(shells, stations, duration_min: float, step_sec: float):
     times = sample_times(duration_min, step_sec)
-    ids = combined_state(shells, 0.0)[0]
-    timelines = timelines_from_states(stations, times, ids, lambda t: combined_state(shells, t)[3])
+    elements_list = [walker_elements(cfg) for _, _, cfg in shells]
+    ids = combined_state(shells, 0.0, elements_list)[0]
+    timelines = timelines_from_states(stations, times, ids, lambda t: _shell_positions(shells, t, elements_list)[1])
     return {"mode":"multi_shell", "total_satellites":sum(x[2].total_satellites for x in shells),
             "orbital_period_min":None,
             "shells":[{"id":normalize_shell_id(x[0],i), "name":x[1], **x[2].to_dict(),

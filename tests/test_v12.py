@@ -54,6 +54,16 @@ def test_shared_propagation_once_per_time(monkeypatch):
     assert len(calls)==1  # small enough to fit in a single chunk, regardless of station count
 
 
+def test_walker_elements_computed_once_per_summary(monkeypatch):
+    import app.core.coverage as mod
+    original=mod.walker_elements;calls=[]
+    def counted(cfg):
+        calls.append(cfg);return original(cfg)
+    monkeypatch.setattr(mod,'walker_elements',counted)
+    multi_station_summary(ConstellationConfig(),[GroundStation('A',0,0),GroundStation('B',30,40)],np.array([0.,60.,120.]))
+    assert len(calls)==1
+
+
 def test_chunked_heatmap_matches_independent_dense_geometry():
     sats=satellite_positions_eci(ConstellationConfig(888,42,16,32),123)
     hm=instantaneous_coverage_heatmap(sats,lat_points=15,lon_points=16)
@@ -144,6 +154,31 @@ def test_comparison_has_six_cases_per_city_metrics_and_reproducibility():
     assert data['analysis_metadata']['input_sha256']==client.post('/api/trade-study',json=payload).json()['analysis_metadata']['input_sha256']
     qualifying=[r['total_satellites'] for r in data['results'] if r['meets_availability']]
     assert qualifying==sorted(qualifying)
+
+
+def test_include_routes_workload_accounts_for_station_pair_routing(monkeypatch):
+    from dataclasses import replace
+    import app.main as main
+    from fastapi import HTTPException
+    from app.main import SimIn, _enforce_sim_limits
+    # The merged implementation shares Dijkstra searches across destinations.
+    # Use a fixed budget between propagation-only and routing workloads.
+    monkeypatch.setattr(main, 'SETTINGS', replace(SETTINGS, max_sim_work=1_000_000))
+    stations=[dict(name=f"S{i}",lat_deg=0.0,lon_deg=float(i),min_elevation_deg=10) for i in range(64)]
+    req=SimIn(planes=64,sats_per_plane=64,duration_min=1,step_sec=60,stations=stations,include_routes=True)
+    with pytest.raises(HTTPException):
+        _enforce_sim_limits(req,req.planes*req.sats_per_plane)
+    # Same size and station count without routing stays under the same workload budget.
+    req_no_routes=req.model_copy(update={'include_routes':False})
+    _enforce_sim_limits(req_no_routes,req_no_routes.planes*req_no_routes.sats_per_plane)
+
+
+def test_scenario_validation_rejects_tle_mode_heatmap_workload_like_walker_mode():
+    from pathlib import Path
+    tle=Path('examples/vanguard1_verification.tle').read_text()
+    payload=dict(configuration=dict(mode='tle',tle_text=tle,heatmap=True,heatmap_points=SETTINGS.max_heatmap_points+1),selection=dict(country_codes=['KOR']))
+    r=client.post('/api/scenario/validate',json=payload)
+    assert r.status_code==413
 
 
 def test_scenario_validation_round_trip():

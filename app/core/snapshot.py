@@ -129,8 +129,9 @@ def walker_snapshot(
     }
 
 
-def _tle_records_and_start(tle_text: str, start_utc: str | None) -> tuple[list[TLERecord], datetime]:
-    records = parse_tle_text(tle_text)
+def _tle_records_and_start(tle_text: str, start_utc: str | None, records: list[TLERecord] | None = None) -> tuple[list[TLERecord], datetime]:
+    if records is None:
+        records = parse_tle_text(tle_text)
     default_start = max(r.epoch_utc for r in records)
     return records, parse_utc(start_utc, default=default_start)
 
@@ -228,8 +229,11 @@ def tle_station_timelines(
     stations: Iterable[GroundStation],
     duration_min: float,
     step_sec: float,
+    records: list[TLERecord] | None = None,
 ) -> dict:
-    records, start = _tle_records_and_start(tle_text, start_utc)
+    # Callers that already parsed tle_text (e.g. to enforce a satellite-count limit) can pass
+    # those records through instead of having parse_tle_text redo the same parse here.
+    records, start = _tle_records_and_start(tle_text, start_utc, records)
     satrecs = build_satrecs(records)
     times = sample_times(duration_min, step_sec)
     ids = [f"NORAD-{r.norad_id}" for r in records]
@@ -263,6 +267,9 @@ def tle_station_timelines(
                 item["best_ids"].append(None)
                 item["ranges"].append(None)
 
+    # availability/avg_visible/handover*/max_sampled_outage_sec etc. are all supplied by
+    # sampled_metrics() below (the same left-hold-interval logic coverage.py uses), so they're
+    # not computed here to begin with rather than computed and immediately overwritten.
     timelines = []
     for item in by_station:
         st = item["station"]

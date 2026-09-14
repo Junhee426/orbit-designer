@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from .constants import R_EARTH_KM
+from .tle import julian_date as _julian_date
 
 """Eclipse geometry: low-precision solar position, cylindrical Earth-shadow test,
 and the analytic orbit-average eclipse fraction from an orbit's beta angle.
@@ -17,18 +18,6 @@ area/efficiency, bus power draw, battery capacity) that are not part of this
 service's constellation model; adding them without real inputs would just be
 fabricated precision.
 """
-
-
-def _julian_date(dt: datetime) -> float:
-    dt = dt.astimezone(timezone.utc)
-    y, m = dt.year, dt.month
-    day = dt.day + (dt.hour + dt.minute / 60.0 + (dt.second + dt.microsecond / 1e6) / 3600.0) / 24.0
-    if m <= 2:
-        y -= 1
-        m += 12
-    a = y // 100
-    b = 2 - a + a // 4
-    return int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + day + b - 1524.5
 
 
 def sun_unit_vector_eci(dt: datetime) -> np.ndarray:

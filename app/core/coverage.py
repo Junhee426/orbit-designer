@@ -1,7 +1,7 @@
 from typing import Dict, List
 import numpy as np
 from .models import ConstellationConfig, GroundStation
-from .constellation import satellite_states_ecef, satellite_ids
+from .constellation import satellite_states_ecef, satellite_ids, walker_elements
 from .ground import elevation_and_range
 from .constants import C_KM_S
 from .sampling import sampled_metrics
@@ -60,7 +60,8 @@ def multi_station_summary(cfg: ConstellationConfig, stations: List[GroundStation
     working arrays stay a few MB regardless of constellation size.
     Field-for-field identical to the generic path.
     """
-    ids = satellite_ids(cfg)
+    elements = walker_elements(cfg)
+    ids = satellite_ids(cfg, elements)
     times = np.asarray(times_sec, dtype=float)
     thresholds = np.array([max(0.0, st.min_elevation_deg) for st in stations])
 
@@ -75,7 +76,7 @@ def multi_station_summary(cfg: ConstellationConfig, stations: List[GroundStation
     best_elev_overall = np.empty((T, S), dtype=float)
 
     for i in range(0, T, chunk):
-        sat_ecef = satellite_states_ecef(cfg, times[i:i + chunk])  # (c, N, 3)
+        sat_ecef = satellite_states_ecef(cfg, times[i:i + chunk], elements=elements)  # (c, N, 3)
         per_station = [elevation_and_range(sat_ecef, st) for st in stations]
         if per_station:
             elev = np.stack([e for e, _ in per_station], axis=1)  # (c, S, N)
