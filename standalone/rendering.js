@@ -1,4 +1,5 @@
 import { EARTH_RADIUS, observerFrame, orbitState } from './engine.js';
+import { footprint, groundTrack } from './geometry.js';
 const NS = 'http://www.w3.org/2000/svg';
 const COLORS = { LEO: '#48d4f0', GNSS: '#f6b75b', REGIONAL: '#c1a0ff' };
 const TWO_PI = Math.PI * 2;
@@ -14,7 +15,8 @@ export class Globe {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
     this.lat = 25; this.lon = 120; this.full = false; this.mode = 'globe'; this.earthStyle = 'image'; this.worldLines = worldLines; this.cached = null;
     this.satShape = 'circle'; this.satSize = 1; this.orbitWidth = 1;
-    this.texture = null; this.snapshot = null; this.orbits = [];
+    this.showOrbits = true; this.showIsl = false; this.showHeatmap = false; this.showFootprint = true; this.commElevation = 20;
+    this.texture = null; this.snapshot = null; this.orbits = []; this.selectedId = null; this.edges = []; this.cells = [];
     const img = new Image();
     img.onload = () => {
       const off = document.createElement('canvas'); off.width = img.width; off.height = img.height;
@@ -38,7 +40,13 @@ export class Globe {
     canvas.addEventListener('pointerup', stop); canvas.addEventListener('pointercancel', stop);
     canvas.addEventListener('lostpointercapture', stop);
   }
-  set(snapshot, orbits) { this.snapshot = snapshot; this.orbits = orbits; this.draw(); }
+  set(snapshot, orbits, selectedId = null, edges = [], cells = []) {
+    this.snapshot = snapshot; this.orbits = orbits; this.selectedId = selectedId; this.edges = edges; this.cells = cells; this.draw();
+  }
+  setLayers(orbits, isl, heatmap, footprint, commElevation) {
+    this.showOrbits = !!orbits; this.showIsl = !!isl; this.showHeatmap = !!heatmap; this.showFootprint = !!footprint;
+    if (Number.isFinite(commElevation)) this.commElevation = commElevation;
+  }
   center(lat, lon) { this.lat = lat; this.lon = lon; this.cached = null; this.draw(); }
   setFull(value) { this.full = value; this.cached = null; this.draw(); }
   setMode(value) { const next = value === 'map' ? 'map' : 'globe'; if (next === this.mode) return; this.mode = next; this.cached = null; this.draw(); }
@@ -109,13 +117,15 @@ export class Globe {
       }
       ctx.stroke();
     };
-    const orbitPlanes = new Map();
-    shown.forEach(o => { const key = o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
-    for (const o of orbitPlanes.values()) {
-      const color = o.group === 'LEO' ? 'rgba(72,212,240,.20)' : o.group === 'GNSS' ? 'rgba(246,183,91,.25)' : 'rgba(193,160,255,.26)';
-      stroke(Array.from({ length: 121 }, (_, i) => orbitState(o, this.snapshot.minutes * 60, TWO_PI * i / 120).position), color, .65 * this.orbitWidth);
-    }
     const surface = (lat, lon) => { lat *= Math.PI / 180; lon *= Math.PI / 180; const c = Math.cos(lat); return [EARTH_RADIUS*c*Math.cos(lon),EARTH_RADIUS*c*Math.sin(lon),EARTH_RADIUS*Math.sin(lat)]; };
+    if (this.showOrbits) {
+      const orbitPlanes = new Map();
+      shown.forEach(o => { const key = o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
+      for (const o of orbitPlanes.values()) {
+        const color = o.group === 'LEO' ? 'rgba(72,212,240,.20)' : o.group === 'GNSS' ? 'rgba(246,183,91,.25)' : 'rgba(193,160,255,.26)';
+        stroke(Array.from({ length: 121 }, (_, i) => orbitState(o, this.snapshot.minutes * 60, TWO_PI * i / 120).position), color, .65 * this.orbitWidth);
+      }
+    }
     if (!map && this.earthStyle === 'image') {
       const gradient = ctx.createRadialGradient(cx, cy, radius * .96, cx, cy, radius * 1.09);
       gradient.addColorStop(0, 'rgba(43,150,201,.24)'); gradient.addColorStop(1, 'rgba(43,150,201,0)');
@@ -127,6 +137,14 @@ export class Globe {
       for(let lat=-60;lat<=60;lat+=30)stroke(Array.from({length:121},(_,i)=>surface(lat,-180+i*3)),lat===0?'#355d76':'#203f55',.7);
       for(let lon=-180;lon<180;lon+=30)stroke(Array.from({length:61},(_,i)=>surface(-90+i*3,lon)),'#203f55',.7);
       for(const outline of this.worldLines)stroke(outline.map(([lat,lon])=>surface(lat,lon)),'#5f8aa3',.9);
+    }
+    if (this.showHeatmap) {
+      for (const cell of this.cells) {
+        const corners = [[cell.south,cell.west],[cell.south,cell.east],[cell.north,cell.east],[cell.north,cell.west]].map(([la,lo]) => project(surface(la, lo)));
+        if (corners.some(q => !unoccluded(q))) continue;
+        ctx.fillStyle = cell.count ? `hsla(172,70%,${(30 + Math.min(cell.count, 12) / 40 * 100).toFixed(0)}%,.55)` : 'rgba(196,82,89,.55)';
+        ctx.beginPath(); ctx.moveTo(corners[0].x, corners[0].y); for (let k = 1; k < 4; k++) ctx.lineTo(corners[k].x, corners[k].y); ctx.closePath(); ctx.fill();
+      }
     }
     if (map) {
       ctx.font = '11px system-ui'; ctx.fillStyle = '#7793ae'; ctx.textAlign = 'center';
@@ -147,24 +165,46 @@ export class Globe {
         ctx.beginPath(); ctx.moveTo(obs.x, obs.y); ctx.lineTo(q.x, q.y); ctx.stroke();
       }
     }
+    if (this.showIsl && this.edges.length) {
+      const byId = new Map(this.snapshot.satellites.map(s => [s.id, s]));
+      for (const e of this.edges) {
+        const a = byId.get(e.a), b = byId.get(e.b); if (!a || !b) continue;
+        stroke([a.position, b.position], '#36685f', 1);
+      }
+    }
     for (const sat of this.snapshot.satellites) {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
-      const chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
+      const selected = sat.id === this.selectedId, chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
       ctx.globalAlpha = map ? 1 : q.z < 0 ? .4 : sat.group === 'LEO' && !navUsed ? .55 : 1;
-      ctx.fillStyle = chosen ? '#f6b75b' : COLORS[sat.group];
-      const r = (chosen ? 4.8 : navUsed ? 3.2 : 1.8) * this.satSize;
+      ctx.fillStyle = selected ? '#ffffff' : chosen ? '#f6b75b' : COLORS[sat.group];
+      const r = (selected || chosen ? 4.8 : navUsed ? 3.2 : 1.8) * this.satSize;
       ctx.beginPath();
       if (this.satShape === 'square') ctx.rect(q.x - r, q.y - r, r * 2, r * 2);
       else if (this.satShape === 'diamond') { ctx.moveTo(q.x, q.y - r); ctx.lineTo(q.x + r, q.y); ctx.lineTo(q.x, q.y + r); ctx.lineTo(q.x - r, q.y); ctx.closePath(); }
       else ctx.arc(q.x, q.y, r, 0, TWO_PI);
       ctx.fill();
+      if (selected) { ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(q.x, q.y, r + 4, 0, TWO_PI); ctx.stroke(); }
       if (chosen) {
         ctx.globalAlpha = 1; ctx.font = '13px system-ui'; ctx.fillStyle = '#ffe0ae';
         ctx.fillText(sat.id, Math.min(w - 42, Math.max(5, q.x + 9)), Math.max(16, q.y - 5));
       }
     }
     ctx.globalAlpha = 1;
+    if (this.selectedId) {
+      const selSat = this.snapshot.satellites.find(s => s.id === this.selectedId), selOrbit = this.orbits.find(o => o.id === this.selectedId);
+      if (this.showFootprint && selSat) {
+        const ring = footprint(selSat.position, this.commElevation).map(([lon, lat]) => project(surface(lat, lon)));
+        if (ring.length && ring.every(unoccluded)) {
+          ctx.beginPath(); ring.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)); ctx.closePath();
+          ctx.fillStyle = 'rgba(132,229,223,.15)'; ctx.strokeStyle = '#84e5df'; ctx.lineWidth = 1.2; ctx.fill(); ctx.stroke();
+        }
+      }
+      if (selOrbit) {
+        const track = groundTrack(selOrbit, this.snapshot.minutes).map(p => { const scale = EARTH_RADIUS / Math.hypot(...p); return p.map(v => v * scale); });
+        stroke(track, '#e8db91', 2);
+      }
+    }
     if (map || obs.z >= 0) {
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#48d4f0'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(obs.x, obs.y, 4, 0, TWO_PI); ctx.fill(); ctx.stroke();

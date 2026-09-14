@@ -72,7 +72,12 @@ export class OrbitViewer {
     this.container.dataset.navigation=showNavigation?'visible':'hidden';
     this.applyEarthStyle(scenario.display.earthStyle);
     this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth);
-    if(!this.usingCesium){this.fallback.setFull(showNavigation);this.fallback.set(snapshot,orbits);return;}
+    if(!this.usingCesium){
+      this.fallback.setFull(showNavigation);
+      this.fallback.setLayers(scenario.display.orbits,scenario.display.isl,scenario.display.heatmap,scenario.display.footprint,scenario.configuration.commElevation);
+      this.fallback.set(snapshot,orbits,selectedId,edges,cells);
+      return;
+    }
     const C=this.C,v=this.viewer;
     const mode=scenario.display.mode==='2d'?C.SceneMode.SCENE2D:C.SceneMode.SCENE3D;
     if(v.scene.mode!==mode){if(mode===C.SceneMode.SCENE2D)v.scene.morphTo2D(0);else v.scene.morphTo3D(0);}
