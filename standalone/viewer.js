@@ -57,8 +57,9 @@ export class OrbitViewer {
     for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let entity=this.points.get(sat.id);
       if(!entity){entity=v.entities.add({id:sat.id,point:{pixelSize:4}});entity.satId=sat.id;this.points.set(sat.id,entity);}
       entity.position=xyz(sat.position);
-      entity.point.pixelSize=sat.id===selectedId?11:sat.navUsed||sat.link?7:3;
-      entity.point.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':sat.navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
+      const navUsed=showNavigation&&sat.navUsed;
+      entity.point.pixelSize=sat.id===selectedId?11:navUsed||sat.link?7:3;
+      entity.point.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
     }
     for(const [id,e]of this.points)if(!keep.has(id)){v.entities.remove(e);this.points.delete(id);}
     for(const e of this.layers)v.entities.remove(e);this.layers=[];

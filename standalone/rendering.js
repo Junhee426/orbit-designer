@@ -114,7 +114,7 @@ export class Globe {
     const obs = project(this.snapshot.observer);
     if (obs.z >= 0) {
       for (const sat of this.snapshot.satellites) {
-        if (sat.group !== 'LEO' || !sat.navUsed) continue;
+        if (!this.full || sat.group !== 'LEO' || !sat.navUsed) continue;
         const q = project(sat.position); if (!unoccluded(q)) continue;
         ctx.strokeStyle = 'rgba(72,212,240,.45)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(obs.x, obs.y); ctx.lineTo(q.x, q.y); ctx.stroke();
@@ -127,10 +127,10 @@ export class Globe {
     for (const sat of this.snapshot.satellites) {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
-      const chosen = sat.id === this.snapshot.best?.id;
-      ctx.globalAlpha = q.z < 0 ? .4 : sat.group === 'LEO' && !sat.navUsed ? .55 : 1;
+      const chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
+      ctx.globalAlpha = q.z < 0 ? .4 : sat.group === 'LEO' && !navUsed ? .55 : 1;
       ctx.fillStyle = chosen ? '#f6b75b' : COLORS[sat.group];
-      ctx.beginPath(); ctx.arc(q.x, q.y, chosen ? 4.8 : sat.navUsed ? 3.2 : 1.8, 0, TWO_PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(q.x, q.y, chosen ? 4.8 : navUsed ? 3.2 : 1.8, 0, TWO_PI); ctx.fill();
       if (chosen) {
         ctx.globalAlpha = 1; ctx.font = '13px system-ui'; ctx.fillStyle = '#ffe0ae';
         ctx.fillText(sat.id, Math.min(w - 42, Math.max(5, q.x + 9)), Math.max(16, q.y - 5));

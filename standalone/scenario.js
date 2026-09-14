@@ -3,7 +3,7 @@ export const SCHEMA_VERSION = 'kleo.integrated.v2';
 export function defaultScenario() {
   return { schema_version:SCHEMA_VERSION, name:'K-LEO 한국 통신망', configuration:structuredClone(DEFAULT_CONFIG),
     selection:{country_codes:['KOR'],cities_per_country:3}, custom_observers:[],
-    analysis:{duration_min:1440,step_sec:300}, display:{mode:'3D',earthStyle:'image',orbits:true,isl:false,heatmap:false,footprint:false,time_sec:0,selected_satellite:null,domain:'commNav'}, active_observer:'KOR:0' };
+    analysis:{duration_min:1440,step_sec:300}, display:{mode:'3D',earthStyle:'image',orbits:true,isl:false,heatmap:false,footprint:true,time_sec:0,selected_satellite:null,domain:'commNav'}, active_observer:'KOR:0' };
 }
 function object(value,label) { if(!value || typeof value!=='object' || Array.isArray(value)) throw Error(label+' 형식을 확인해 주세요.'); }
 function keys(value,allowed,label) {object(value,label);if(Object.keys(value).some(k=>!allowed.includes(k))) throw Error(label+'에 알 수 없는 항목이 있습니다.');}
