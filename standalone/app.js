@@ -123,14 +123,15 @@ function draw(){
   }catch(e){pause();error(e.message);}
 }
 const viewMeta={
-  design:{side:'위성군 구성',eyebrow:'COMMUNICATION CONSTELLATION OVERVIEW',title:'통신망 궤도 배치',descComm:'위성군의 구성과 통신 접속 성능을 확인하세요.',descNav:'위성군의 구성과 통신 접속 성능을 먼저 확인하고 항법 성능을 확장하세요.',action:'이 구성으로 상세 분석 →',go:'analysis'},
-  analysis:{side:'분석 조건',eyebrow:'COMMUNICATION NETWORK ANALYSIS',title:'통신망 상세 분석',descComm:'선택한 관측지의 가시성과 통신 처리량을 분석하세요.',descNav:'선택한 관측지의 가시성과 통신 처리량을 분석하고 항법 정확도를 펼쳐 비교하세요.',action:'궤도 배치 보기 ↗',go:'design'},
-  trade:{side:'후보 비교 조건',eyebrow:'CONSTELLATION TRADE STUDY',title:'후보 비교',descComm:'동일한 서비스 조건에서 여섯 개 Walker 후보의 통신 성능을 비교하세요.',descNav:'동일한 서비스 조건에서 여섯 개 Walker 후보의 통합 성능을 비교하세요.',action:'상세 분석 보기 ↗',go:'analysis'}
+  design:{side:'위성군 구성',eyebrowComm:'COMMUNICATION CONSTELLATION OVERVIEW',eyebrowNav:'COMMUNICATION + NAVIGATION OVERVIEW',titleComm:'통신망 궤도 배치',titleNav:'통신·항법 통합 궤도 배치',descComm:'위성군의 구성과 통신 접속 성능을 확인하세요.',descNav:'위성군의 구성과 통신 접속 성능, 항법 정확도를 함께 확인하세요.',action:'이 구성으로 상세 분석 →',go:'analysis'},
+  analysis:{side:'분석 조건',eyebrowComm:'COMMUNICATION NETWORK ANALYSIS',eyebrowNav:'COMMUNICATION + NAVIGATION ANALYSIS',titleComm:'통신망 상세 분석',titleNav:'통신·항법 통합 분석',descComm:'선택한 관측지의 가시성과 통신 처리량을 분석하세요.',descNav:'선택한 관측지의 가시성·통신 처리량·항법 정확도와 동시 목표 충족률을 함께 분석하세요.',action:'궤도 배치 보기 ↗',go:'design'},
+  trade:{side:'후보 비교 조건',eyebrowComm:'CONSTELLATION TRADE STUDY',eyebrowNav:'CONSTELLATION TRADE STUDY · COMM + NAV',titleComm:'후보 비교',titleNav:'통신·항법 후보 비교',descComm:'동일한 서비스 조건에서 여섯 개 Walker 후보의 통신 성능을 비교하세요.',descNav:'동일한 서비스 조건에서 여섯 개 Walker 후보의 통신·항법 통합 성능을 비교하세요.',action:'상세 분석 보기 ↗',go:'analysis'}
 };
 function applyMeta(){
   const meta=viewMeta[view];if(!meta)return;
-  text('sidebar-title',meta.side);text('workspace-eyebrow',meta.eyebrow);text('workspace-title',meta.title);
-  text('workspace-description',domain==='commNav'?meta.descNav:meta.descComm);text('workspace-action',meta.action);$('workspace-action').dataset.go=meta.go;
+  const nav=domain==='commNav';
+  text('sidebar-title',meta.side);text('workspace-eyebrow',nav?meta.eyebrowNav:meta.eyebrowComm);text('workspace-title',nav?meta.titleNav:meta.titleComm);
+  text('workspace-description',nav?meta.descNav:meta.descComm);text('workspace-action',meta.action);$('workspace-action').dataset.go=meta.go;
 }
 function applyDomainText(){
   text('analysis-empty-note',domain==='commNav'?'도시별 가시율과 통신 목표 충족률을 먼저 확인하고, 항법 성능 확장에서 정확도와 동시 충족률을 함께 비교할 수 있습니다.':'도시별 가시율과 통신 목표 충족률을 확인하세요.');
@@ -150,10 +151,7 @@ function setDomain(next){
   domain=next;scenario.display.domain=next;document.body.dataset.domain=next;
   for(const b of document.querySelectorAll('button[data-domain]')){const active=b.dataset.domain===next;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');}
   for(const opt of document.querySelectorAll('#sweep-axis option.nav-only'))opt.hidden=next==='comm';
-  if(next==='comm'){
-    if(['navShare','payloadPercent'].includes($('sweep-axis').value))$('sweep-axis').value='altitude';
-    $('nav-performance').open=false;$('analysis-nav-performance').open=false;
-  }
+  if(next==='comm'&&['navShare','payloadPercent'].includes($('sweep-axis').value))$('sweep-axis').value='altitude';
   applyMeta();applyDomainText();draw();renderResults();renderTrade();
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.tab)));
