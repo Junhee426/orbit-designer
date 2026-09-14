@@ -80,8 +80,8 @@ function refreshConfiguration(){
   text('analysis-config',`${cfg.mode==='tle'?'TLE / SGP4':cfg.mode==='multi_shell'?`Multi-shell · ${cfg.shells.length}개 층`:`Walker-Delta · ${format(cfg.altitude,0)} km · 경사각 ${format(cfg.inclination,1)}°`} · 총 ${total.toLocaleString()}기`);
   text('nav-extension-state',cfg.leoNav?`LEO 항법 ${format(cfg.payloadPercent,0)}% · ${cfg.regional?'지역항법 포함':'GNSS 융합'}`:'GNSS 기준 · LEO 항법 꺼짐');
   text('map-title',`${total.toLocaleString()}기 · ${cfg.mode==='tle'?'TLE / SGP4':cfg.mode==='multi_shell'?'Multi-shell':cfg.altitude.toLocaleString()+' km'}`);
-  const satKey=orbits.map(o=>o.id).join('|');if(satKey!==lastSatKey){$('satellite').replaceChildren(...orbits.filter(o=>o.group==='LEO').map(o=>option(o.id,o.name||o.id)));lastSatKey=satKey;}
-  if(!orbits.some(o=>o.id===selected))selected=orbits.find(o=>o.group==='LEO')?.id;$('satellite').value=selected;
+  const satKey=orbits.map(o=>o.id).join('|');if(satKey!==lastSatKey){$('satellite').replaceChildren(option('','선택 안 함'),...orbits.filter(o=>o.group==='LEO').map(o=>option(o.id,o.name||o.id)));lastSatKey=satKey;}
+  if(selected!==null&&!orbits.some(o=>o.id===selected))selected=null;$('satellite').value=selected??'';
   $('run-trade').disabled=!!worker||cfg.mode!=='walker';modeFields();draw();renderResults();renderTrade();
 }
 function activeObserver(){return observers.find(o=>o.id===scenario.active_observer)||observers[0];}
@@ -168,7 +168,7 @@ $('add-shell').addEventListener('click',()=>{const ids=new Set(readRows('.shell'
 $('add-observer').addEventListener('click',()=>{const id=globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random().toString(16).slice(2)}`;addObserverRow({id:'custom:'+id,name:'직접 입력',lat:37,lon:127});applyInputs();});
 $('example-tle').addEventListener('click',async()=>{try{$('tle-text').value=await fetch(new URL('./example.tle',import.meta.url)).then(r=>r.text());$('start-utc').value='';applyInputs();}catch(e){error(e.message);}});
 $('observer').addEventListener('change',()=>{scenario.active_observer=$('observer').value;refreshConfiguration();const o=activeObserver();viewer.center(o.lon,o.lat);});
-$('satellite').addEventListener('change',()=>{selected=$('satellite').value;draw();});
+$('satellite').addEventListener('change',()=>{selected=$('satellite').value||null;draw();});
 function pause(){clearInterval(playing);playing=null;text('play','재생');$('play').setAttribute('aria-pressed','false');}
 $('play').addEventListener('click',()=>{if(playing){pause();return;}text('play','일시정지');$('play').setAttribute('aria-pressed','true');playing=setInterval(()=>{const end=scenario.analysis.duration_min*60;seconds=seconds>=end?0:Math.min(end,seconds+60);draw();},500);});
 $('time').addEventListener('input',()=>{pause();seconds=Number($('time').value);draw();});

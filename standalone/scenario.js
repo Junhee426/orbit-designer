@@ -3,7 +3,7 @@ export const SCHEMA_VERSION = 'kleo.integrated.v2';
 export function defaultScenario() {
   return { schema_version:SCHEMA_VERSION, name:'K-LEO 한국 통신망', configuration:structuredClone(DEFAULT_CONFIG),
     selection:{country_codes:['KOR'],cities_per_country:3}, custom_observers:[],
-    analysis:{duration_min:1440,step_sec:300}, display:{mode:'3D',earthStyle:'image',orbits:true,isl:false,heatmap:false,footprint:false,time_sec:0,selected_satellite:null,domain:'commNav'}, active_observer:'KOR:0' };
+    analysis:{duration_min:1440,step_sec:300}, display:{mode:'3d',earthStyle:'image',orbits:true,isl:false,heatmap:false,footprint:true,time_sec:0,selected_satellite:null,domain:'commNav'}, active_observer:'KOR:0' };
 }
 function object(value,label) { if(!value || typeof value!=='object' || Array.isArray(value)) throw Error(label+' 형식을 확인해 주세요.'); }
 function keys(value,allowed,label) {object(value,label);if(Object.keys(value).some(k=>!allowed.includes(k))) throw Error(label+'에 알 수 없는 항목이 있습니다.');}
@@ -38,8 +38,9 @@ export function validateScenario(input,catalog) {
   if(samples.length>3001||samples.length*count*observers.length>30_000_000) throw Error('분석량 한도 초과: 시간 간격을 늘리거나 위성·관측지를 줄여 주세요.');
   keys(s.display,['mode','earthStyle','orbits','isl','heatmap','footprint','time_sec','selected_satellite','domain'],'표시');
   s.display.earthStyle??='image';s.display.time_sec??=0;s.display.selected_satellite??=null;s.display.domain??='commNav';
+  s.display.mode={'3D':'3d','2D':'2d'}[s.display.mode]??s.display.mode;
   if(!Number.isFinite(s.display.time_sec)||s.display.time_sec<0||s.display.time_sec>s.analysis.duration_min*60||s.display.selected_satellite!==null&&typeof s.display.selected_satellite!=='string') throw Error('저장된 지도 시각·위성 선택이 유효하지 않습니다.');
-  if(!['2D','3D'].includes(s.display.mode)||!['image','outline'].includes(s.display.earthStyle)||!['comm','commNav'].includes(s.display.domain)||['orbits','isl','heatmap','footprint'].some(k=>typeof s.display[k]!=='boolean')) throw Error('지도 표시 설정을 확인해 주세요.');
+  if(!['3d','2d','2d-globe','2d-map'].includes(s.display.mode)||!['image','outline'].includes(s.display.earthStyle)||!['comm','commNav'].includes(s.display.domain)||['orbits','isl','heatmap','footprint'].some(k=>typeof s.display[k]!=='boolean')) throw Error('지도 표시 설정을 확인해 주세요.');
   return s;
 }
 export function sampleTimes(durationMin,stepSec) {

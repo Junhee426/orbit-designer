@@ -4,10 +4,15 @@ import {footprint,groundTrack} from './geometry.js';
 export class OrbitViewer {
   constructor(container,onSelect,worldLines=[]) {
     this.container=container;this.onSelect=onSelect;this.worldLines=worldLines;this.points=new Map();this.layers=[];this.outlineEntities=[];this.selected=null;this.earthStyle='image';this.appliedEarthStyle=null;
+    this.uiMode='3d';
+    this.canvas=document.createElement('canvas');this.canvas.style.cssText='width:100%;height:100%;display:block';this.canvas.hidden=true;
+    this.fallback=new Globe(this.canvas,worldLines);
     try {
       const C=globalThis.Cesium;if(!C)throw Error('지도 라이브러리 없음');this.C=C;
+      this.cesiumContainer=document.createElement('div');this.cesiumContainer.style.cssText='width:100%;height:100%';
+      container.append(this.cesiumContainer,this.canvas);
       C.Ion.defaultAccessToken='';
-      this.viewer=new C.Viewer(container,{baseLayer:false,baseLayerPicker:false,geocoder:false,animation:false,timeline:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,skyBox:false,skyAtmosphere:false,requestRenderMode:true,maximumRenderTimeChange:Infinity});
+      this.viewer=new C.Viewer(this.cesiumContainer,{baseLayer:false,baseLayerPicker:false,geocoder:false,animation:false,timeline:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,skyBox:false,skyAtmosphere:false,requestRenderMode:true,maximumRenderTimeChange:Infinity});
       this.viewer.scene.globe.baseColor=C.Color.fromCssColorString('#12304a');
       this.viewer.scene.backgroundColor=C.Color.fromCssColorString('#081322');
       this.viewer.scene.globe.enableLighting=false;
@@ -15,12 +20,21 @@ export class OrbitViewer {
       this.viewer.screenSpaceEventHandler.setInputAction(click=>{const p=this.viewer.scene.pick(click.position);if(p?.id?.satId)this.onSelect(p.id.satId);},C.ScreenSpaceEventType.LEFT_CLICK);
       this.center(127,36);
     } catch(error) {
-      this.viewer?.destroy();this.viewer=null;container.replaceChildren();
-      const canvas=document.createElement('canvas');canvas.style.cssText='width:100%;height:100%';container.append(canvas);this.fallback=new Globe(canvas,worldLines);
+      this.viewer?.destroy();this.viewer=null;this.cesiumContainer=null;
+      container.replaceChildren(this.canvas);this.canvas.hidden=false;
       document.getElementById('map-note').textContent='이 환경에서는 간단 지구본으로 표시합니다. 전체 3D 지도에는 WebGL이 필요합니다.';
     }
   }
-  center(lon,lat){if(this.viewer)this.viewer.camera.setView({destination:this.C.Cartesian3.fromDegrees(lon,lat,14000000)});else this.fallback.center(lat,lon);}
+  get usingCesium(){return !!this.viewer&&(this.uiMode==='3d'||this.uiMode==='2d');}
+  setUiMode(mode){
+    if(!['3d','2d','2d-globe','2d-map'].includes(mode)||mode===this.uiMode)return;
+    this.uiMode=mode;
+    const wantCesium=(mode==='3d'||mode==='2d')&&!!this.viewer;
+    if(this.cesiumContainer)this.cesiumContainer.hidden=!wantCesium;
+    this.canvas.hidden=wantCesium;
+    if(!wantCesium)this.fallback.setMode(mode==='2d-map'?'map':'globe');
+  }
+  center(lon,lat){if(this.usingCesium)this.viewer.camera.setView({destination:this.C.Cartesian3.fromDegrees(lon,lat,14000000)});else this.fallback.center(lat,lon);}
   ensureEarthOutline(){
     if(!this.viewer||this.outlineEntities.length)return;
     const C=this.C,v=this.viewer,add=(points,color,width)=>{
@@ -34,7 +48,8 @@ export class OrbitViewer {
   }
   applyEarthStyle(style='image',force=false){
     this.earthStyle=style==='outline'?'outline':'image';this.container.dataset.earthStyle=this.earthStyle;
-    if(!this.viewer){this.fallback?.setEarthStyle(this.earthStyle);return;}
+    this.fallback?.setEarthStyle(this.earthStyle);
+    if(!this.usingCesium)return;
     if(!force&&this.appliedEarthStyle===this.earthStyle)return;
     const outline=this.earthStyle==='outline';if(outline)this.ensureEarthOutline();
     if(this.imageryLayer)this.imageryLayer.show=!outline;
@@ -45,11 +60,12 @@ export class OrbitViewer {
   }
   update(snapshot,orbits,scenario,observers,selectedId,edges=[],cells=[],showNavigation=false) {
     this.selected=selectedId;
+    this.setUiMode(scenario.display.mode);
     this.container.dataset.navigation=showNavigation?'visible':'hidden';
     this.applyEarthStyle(scenario.display.earthStyle);
-    if(!this.viewer){this.fallback.setFull(showNavigation);this.fallback.set(snapshot,orbits);return;}
+    if(!this.usingCesium){this.fallback.setFull(showNavigation);this.fallback.set(snapshot,orbits);return;}
     const C=this.C,v=this.viewer;
-    const mode=scenario.display.mode==='2D'?C.SceneMode.SCENE2D:C.SceneMode.SCENE3D;
+    const mode=scenario.display.mode==='2d'?C.SceneMode.SCENE2D:C.SceneMode.SCENE3D;
     if(v.scene.mode!==mode){if(mode===C.SceneMode.SCENE2D)v.scene.morphTo2D(0);else v.scene.morphTo3D(0);}
     const xyz=p=>new C.Cartesian3(...p.map(x=>x*1000));
     v.entities.suspendEvents();
@@ -57,8 +73,9 @@ export class OrbitViewer {
     for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let entity=this.points.get(sat.id);
       if(!entity){entity=v.entities.add({id:sat.id,point:{pixelSize:4}});entity.satId=sat.id;this.points.set(sat.id,entity);}
       entity.position=xyz(sat.position);
-      entity.point.pixelSize=sat.id===selectedId?11:sat.navUsed||sat.link?7:3;
-      entity.point.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':sat.navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
+      const navUsed=showNavigation&&sat.navUsed;
+      entity.point.pixelSize=sat.id===selectedId?11:navUsed||sat.link?7:3;
+      entity.point.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
     }
     for(const [id,e]of this.points)if(!keep.has(id)){v.entities.remove(e);this.points.delete(id);}
     for(const e of this.layers)v.entities.remove(e);this.layers=[];
