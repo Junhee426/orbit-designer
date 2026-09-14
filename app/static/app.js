@@ -825,6 +825,7 @@ function renderFlat(){
 function setViewMode(mode){
   if(!['3d','2d','2d-globe','2d-map'].includes(mode))return;
   state.viewMode=mode;$('sceneMode').value=mode;const flat=['2d-globe','2d-map'].includes(mode);
+  if(flat)$('mapModeNote').textContent=mode==='2d-globe'?'드래그로 회전 · 위성 클릭으로 선택':'위성 클릭으로 선택';
   $('cesiumContainer').hidden=flat;$('flatCanvas').hidden=!flat;$('flatLegend').hidden=!flat;$('flatModeNote').hidden=!flat;
   $('viewerError').style.display=flat?'none':(state.cesiumFailed?'flex':'');
   for(const id of ['globalView','serviceView','selectedView'])$(id).style.display=flat?'none':'';

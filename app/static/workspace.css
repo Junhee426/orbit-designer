@@ -29,5 +29,5 @@ body[data-workspace="analysis"] #settingsPanel>section[data-view="analysis"]:nth
 .map-controls span{margin-left:auto;color:var(--muted);font-size:11px}
 
 .flat-host[hidden],.cesium-host[hidden],#flatLegend[hidden]{display:none!important}
-#flatLegend:not([hidden]){display:block;pointer-events:none}
+#flatLegend:not([hidden]){display:block;pointer-events:none;bottom:auto;top:32px}
 #flatLegendSub{display:block;margin-top:4px}
