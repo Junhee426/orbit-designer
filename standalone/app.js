@@ -23,16 +23,21 @@ function field(container,key,label,type='number',extra={}){
 const modeInput=field($('orbit-fields'),'mode','궤도 모델','select',{options:[['walker','단일 Walker'],['multi_shell','다층 Walker'],['tle','TLE / SGP4']]});
 for(const [key,label,min,max]of [['altitude','고도 (km)',160,3000],['inclination','경사각 (°)',0,180],['planes','궤도면 수',1,128],['satellitesPerPlane','면당 위성 수',1,256],['phasing','Walker F',0,127]])field($('orbit-fields'),key,label,'number',{min,max});
 field($('orbit-fields'),'j2','J2 RAAN 보정','checkbox');
-for(const [key,label,type,extra]of [
-  ['commElevation','통신 최소 고도각 (°)','number',{min:0,max:90}],['navElevation','항법 최소 고도각 (°)','number',{min:0,max:90}],
-  ['leoNav','LEO 항법 탑재체 사용','checkbox',{}],['payloadPercent','항법 탑재 위성 비율 (%)','number',{min:0,max:100}],
-  ['regional','지역항법 8기 예시 추가','checkbox',{}],['sharing','신호 구성','select',{options:[['separate','신호 분리'],['time','시간 공유']]}],
-  ['navShare','항법 시간 배정 (%)','number',{min:0,max:40}],['horizontalTarget','수평 RMS 목표 (m 이하)','number',{min:.1,max:100}],['rateTarget','통신 목표 (Mbps 이상)','number',{min:1,max:1000}]
-])field($('service-fields'),key,label,type,extra);
 for(const [key,label,min,max]of [
-  ['gnssSigma','GNSS 거리오차 (m)',.1,30],['leoSigma','LEO 잡음 / 1,000 km (m)',.1,30],['orbitSigma','LEO 궤도오차 (m)',0,30],['clockNs','LEO 시계오차 (ns)',0,1000],
+  ['commElevation','통신 최소 고도각 (°)',0,90],['rateTarget','통신 목표 (Mbps 이상)',1,1000]
+])field($('comm-fields'),key,label,'number',{min,max});
+for(const [key,label,min,max]of [
   ['eirp','EIRP (dBW)',20,65],['gt','수신 G/T (dB/K)',-10,30],['bandwidth','대역폭 (MHz)',1,500],['frequency','주파수 (GHz)',10,40],['rainLoss','강우손실 (dB)',0,40],['otherLoss','기타손실 (dB)',0,50],['dataRate','마진 기준 데이터율 (Mbps)',.1,10000],['requiredEbn0','요구 Eb/N0 (dB)',-20,40]
-])field($('error-fields'),key,label,'number',{min,max});
+])field($('rf-fields'),key,label,'number',{min,max});
+for(const [key,label,type,extra]of [
+  ['navElevation','항법 최소 고도각 (°)','number',{min:0,max:90}],['leoNav','LEO 항법 탑재체 사용','checkbox',{}],
+  ['payloadPercent','항법 탑재 위성 비율 (%)','number',{min:0,max:100}],['regional','지역항법 8기 예시 추가','checkbox',{}],
+  ['sharing','신호 구성','select',{options:[['separate','신호 분리'],['time','시간 공유']]}],['navShare','항법 시간 배정 (%)','number',{min:0,max:40}],
+  ['horizontalTarget','수평 RMS 목표 (m 이하)','number',{min:.1,max:100}]
+])field($('nav-fields'),key,label,type,extra);
+for(const [key,label,min,max]of [
+  ['gnssSigma','GNSS 거리오차 (m)',.1,30],['leoSigma','LEO 잡음 / 1,000 km (m)',.1,30],['orbitSigma','LEO 궤도오차 (m)',0,30],['clockNs','LEO 시계오차 (ns)',0,1000]
+])field($('nav-error-fields'),key,label,'number',{min,max});
 for(const c of catalog.countries){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=c.code;input.dataset.country=c.code;label.append(input,document.createTextNode(c.name_ko));$('countries').append(label);}
 
 function rowInput(row,key,value,type='number') {const label=document.createElement('label');label.className='field';label.textContent=({id:'층 ID (영문·숫자)',altitude:'고도 (km)',inclination:'경사각 (°)',planes:'궤도면 수',satellitesPerPlane:'면당 위성 수',phasing:'Walker F',j2:'J2 RAAN 보정',name:'관측지 이름',lat:'위도 (°)',lon:'경도 (°)'})[key]||key;const input=document.createElement('input');input.type=type;input.dataset.key=key;if(type==='checkbox')input.checked=value;else input.value=value;input.step='any';label.append(input);row.append(label);return input;}
@@ -73,6 +78,7 @@ function refreshConfiguration(){
   const cfg=scenario.configuration,total=orbits.filter(o=>o.group==='LEO').length;
   text('orbit-note',`${total.toLocaleString()}기 · ${cfg.mode==='tle'?'SGP4 (J2 중복 적용 없음)':cfg.mode==='multi_shell'?`${cfg.shells.length}개 층 · 층별 J2 설정`:`Walker F=${cfg.phasing} · J2 ${cfg.j2?'켜짐':'꺼짐'}`}`);
   text('analysis-config',`${cfg.mode==='tle'?'TLE / SGP4':cfg.mode==='multi_shell'?`Multi-shell · ${cfg.shells.length}개 층`:`Walker-Delta · ${format(cfg.altitude,0)} km · 경사각 ${format(cfg.inclination,1)}°`} · 총 ${total.toLocaleString()}기`);
+  text('nav-extension-state',cfg.leoNav?`LEO 항법 ${format(cfg.payloadPercent,0)}% · ${cfg.regional?'지역항법 포함':'GNSS 융합'}`:'GNSS 기준 · LEO 항법 꺼짐');
   text('map-title',`${total.toLocaleString()}기 · ${cfg.mode==='tle'?'TLE / SGP4':cfg.mode==='multi_shell'?'Multi-shell':cfg.altitude.toLocaleString()+' km'}`);
   const satKey=orbits.map(o=>o.id).join('|');if(satKey!==lastSatKey){$('satellite').replaceChildren(...orbits.filter(o=>o.group==='LEO').map(o=>option(o.id,o.name||o.id)));lastSatKey=satKey;}
   if(!orbits.some(o=>o.id===selected))selected=orbits.find(o=>o.group==='LEO')?.id;$('satellite').value=selected;
@@ -88,17 +94,21 @@ function draw(){
     const states=statesAt(orbits,seconds/60),o=activeObserver(),cfg=scenario.configuration;
     scenario.display.time_sec=seconds;scenario.display.selected_satellite=selected;
     current=evaluateSnapshot(cfg,geometryAt(states,o,seconds/60));
+    const leoCount=current.satellites.filter(s=>s.group==='LEO').length,link=current.best?.link,sat=current.satellites.find(s=>s.id===selected);
     cards('snapshot-metrics',[
+      ['전체 통신 위성',format(leoCount,0),'기',cfg.mode==='walker'?`${cfg.planes}개 궤도면`:cfg.mode==='multi_shell'?`${cfg.shells.length}개 궤도층`:'TLE 위성군'],
       ['통신 가시 위성',format(current.commVisible,0),'기','기하학적 가시성'],
       ['최선 링크 처리량',format(current.rate,1),'Mbps',`목표 ≥ ${cfg.rateTarget} Mbps`],
-      ['융합 항법 수평 RMS',format(current.fusion.hrms),'m',current.fusion.valid?`목표 ≤ ${cfg.horizontalTarget} m`:current.fusion.reason],
-      ['현재 동시 목표',current.jointPass?'충족':'미충족','',`통신 ${current.commPass?'✓':'–'} · 항법 ${current.navPass?'✓':'–'}`]
+      ['링크 마진',format(link?.margin),'dB',current.commPass?'통신 목표 충족':'통신 목표 미충족']
+    ]);
+    details('comm-snapshot',[
+      ['접속 위성',current.best?.id||'없음'],['고도각',format(current.best?.elevation)+'°'],['경사거리',format(current.best?.range,1)+' km'],
+      ['편도 지연',format(link?.delayMs)+' ms'],['C/N₀',format(link?.cn0)+' dBHz'],['Eb/N₀',format(link?.ebn0)+' dB']
     ]);
     skyPlot($('sky-plot'),current);text('sky-count',`${current.fusion.satellites}기 사용`);
     details('snapshot-details',[
       ['항법 LEO / GNSS',`${current.navVisibleLEO} / ${current.gnssVisible}`],['지역항법 위성',format(current.regionalVisible,0)+'기'],['GNSS 단독 HRMS',format(current.baseline.hrms)+' m'],['GNSS + LEO HRMS',format(current.gnssLEO.hrms)+' m'],['융합 VRMS',format(current.fusion.vrms)+' m'],['기하학적 PDOP',format(current.fusion.pdop)]
     ]);
-    const link=current.best?.link,sat=current.satellites.find(s=>s.id===selected);
     details('link-metrics',[
       ['접속 위성',current.best?.id||'없음'],['고도각',format(current.best?.elevation)+'°'],['경사거리',format(current.best?.range,1)+' km'],['편도 전파지연',format(link?.delayMs)+' ms'],['도플러',format(link?.dopplerKHz)+' kHz'],
       ['링크 마진',format(link?.margin)+' dB'],['C/N',format(link?.snr)+' dB'],['C/N₀',format(link?.cn0)+' dBHz'],['Eb/N₀',format(link?.ebn0)+' dB'],['자유공간 손실',format(link?.fspl)+' dB'],
@@ -111,8 +121,8 @@ function draw(){
   }catch(e){pause();error(e.message);}
 }
 const viewMeta={
-  design:{side:'위성군 구성',eyebrow:'CONSTELLATION OVERVIEW',title:'궤도 배치',description:'위성군의 구성과 통신·항법 순간 성능을 한눈에 확인하세요.',action:'이 구성으로 상세 분석 →',go:'analysis'},
-  analysis:{side:'분석 조건',eyebrow:'COMMUNICATION / NAVIGATION ANALYSIS',title:'상세 분석',description:'선택한 관측지의 가시성, 통신 처리량과 항법 정확도를 같은 기간에서 비교하세요.',action:'궤도 배치 보기 ↗',go:'design'},
+  design:{side:'위성군 구성',eyebrow:'COMMUNICATION CONSTELLATION OVERVIEW',title:'통신망 궤도 배치',description:'위성군의 구성과 통신 접속 성능을 먼저 확인하고 항법 성능을 확장하세요.',action:'이 구성으로 상세 분석 →',go:'analysis'},
+  analysis:{side:'분석 조건',eyebrow:'COMMUNICATION NETWORK ANALYSIS',title:'통신망 상세 분석',description:'선택한 관측지의 가시성과 통신 처리량을 분석하고 항법 정확도를 펼쳐 비교하세요.',action:'궤도 배치 보기 ↗',go:'design'},
   trade:{side:'후보 비교 조건',eyebrow:'CONSTELLATION TRADE STUDY',title:'후보 비교',description:'동일한 서비스 조건에서 여섯 개 Walker 후보의 통합 성능을 비교하세요.',action:'상세 분석 보기 ↗',go:'analysis'}
 };
 function setView(next){
@@ -164,7 +174,8 @@ function renderResults(){if(!result)return;const stale=analysisKey(result.scenar
   $('analysis-empty').hidden=true;$('analysis-results').hidden=false;
   text('analysis-note',`${stale?'이전 설정의 결과 · 다시 분석해 주세요. ':''}${result.scenario.name} · ${result.scenario.analysis.duration_min}분 / ${result.scenario.analysis.step_sec}초 간격 · 종료 시각 포함 · 시간 가중 비율`);
   const row=result.observers.find(o=>o.observer.id===scenario.active_observer)||result.observers[0],s=row.summary;
-  cards('period-metrics',[['기하학적 가시율',format(s.geometricAvailability,1),'%',row.observer.name],['통신 목표 충족률',format(s.commAvailability,1),'%',`≥ ${result.scenario.configuration.rateTarget} Mbps`],['항법 목표 충족률',format(s.navAvailability,1),'%',`HRMS ≤ ${result.scenario.configuration.horizontalTarget} m`],['동시 목표 충족률',format(s.jointAvailability,1),'%','같은 시간에 두 목표 충족']]);
+  cards('period-metrics',[['기하학적 가시율',format(s.geometricAvailability,1),'%',row.observer.name],['통신 목표 충족률',format(s.commAvailability,1),'%',`≥ ${result.scenario.configuration.rateTarget} Mbps`],['처리량 중앙값',format(s.medianRate,1),'Mbps','유효 표본 기준'],['최장 표본 단절',format(s.longestOutageSec,0),'s','분석 간격 해상도']]);
+  cards('nav-period-metrics',[['항법 목표 충족률',format(s.navAvailability,1),'%',`HRMS ≤ ${result.scenario.configuration.horizontalTarget} m`],['동시 목표 충족률',format(s.jointAvailability,1),'%','통신·항법 동시 충족'],['HRMS 중앙값',format(s.medianHrms,2),'m','전체 선택 항법망'],['측위 유효율',format(s.validNavAvailability,1),'%','유효 항법해 표본']]);
   table('station-table',['관측지',...summaryColumns.map(c=>c[1])],result.observers.map(r=>[r.observer.name,...summaryColumns.map(([k])=>format(r.summary[k]))]));
   const points=row.samples.map(s=>({...s,hours:s.minutes/60})),xMax=result.scenario.analysis.duration_min/60;
   lineChart($('rate-chart'),points,[{key:'rate',color:'#f6b75b'}],{xMax,threshold:result.scenario.configuration.rateTarget,yLabel:'Mbps'});

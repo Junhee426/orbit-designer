@@ -1,7 +1,7 @@
 import { DEFAULT_CONFIG, validateConfig, buildConstellations, MODEL_VERSION } from './engine.js';
 export const SCHEMA_VERSION = 'kleo.integrated.v2';
 export function defaultScenario() {
-  return { schema_version:SCHEMA_VERSION, name:'K-LEO 한국 통신·항법', configuration:structuredClone(DEFAULT_CONFIG),
+  return { schema_version:SCHEMA_VERSION, name:'K-LEO 한국 통신망', configuration:structuredClone(DEFAULT_CONFIG),
     selection:{country_codes:['KOR'],cities_per_country:3}, custom_observers:[],
     analysis:{duration_min:1440,step_sec:300}, display:{mode:'3D',orbits:true,isl:false,heatmap:false,footprint:false,time_sec:0,selected_satellite:null}, active_observer:'KOR:0' };
 }
