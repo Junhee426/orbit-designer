@@ -17,6 +17,7 @@ const testExports = [
   'loadServiceCatalog', 'fetchSelectedGeometry', 'runAnalysis', 'setModeUI',
   'initShells', 'addShell', 'shellPayloads', 'snapshotPayload', 'bind',
   'selectNextServiceSatellite', 'sliderChanged',
+  'applySceneMode',
 ].join(',');
 const code = source.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/, `window.testAPI={${testExports}};\n})();`);
 assert.notEqual(code, source, 'The harness must suppress the real startup call.');
@@ -29,6 +30,7 @@ function setup(controlOverrides = {}) {
   const controls = {
     mode: 'walker', satRender: 'point', satSize: '1', satModel: 'default',
     earthOn: 'true', earthOpacity: '1', earthSource: 'offline',
+    sceneMode: '3d', earthStyle: 'image',
     orbitOn: 'true', islOn: 'true', accessOn: 'true',
     groundTrackOn: 'false', footprintOn: 'false', trackSpan: '220',
     minEl: '20', timeSlider: '0', ...controlOverrides,
@@ -118,11 +120,14 @@ function setup(controlOverrides = {}) {
   const viewer = {
     flyTo(entity) { cesiumCalls.push(['flyToEntity', entity]); },
     camera: {
+      cancelFlight() {},
       positionWC: { x: 3 * 6378137.0, y: 0, z: 0 },
       setView(opts) { cesiumCalls.push(['setView', opts]); },
       flyTo(opts) { cesiumCalls.push(['flyTo', opts]); },
     },
     scene: {
+      morphTo2D(duration) { cesiumCalls.push(['morphTo2D', duration]); },
+      morphTo3D(duration) { cesiumCalls.push(['morphTo3D', duration]); },
       globe: { translucency: {} },
       primitives: { add: c => c, remove() {} },
     },
@@ -152,6 +157,85 @@ function setup(controlOverrides = {}) {
 
 async function run() {
   let checks = 0;
+
+  // Switching projection retains entity identity and selection, exposes both
+  // hemispheres in 2D, then restores the user's chosen 3D satellite style.
+  {
+    const h = setup({ satRender: 'model' });
+    h.api.reconcileSatellites([{ id: 'back', name: 'Back', ecef_x_km: -7500, ecef_y_km: 0, ecef_z_km: 0 }]);
+    const entity = h.api.state.satEntities.get('back');
+    h.api.state.selectedId = 'back';
+    h.element('sceneMode').value = '2d';
+    h.api.applySceneMode();
+    assert.equal(entity.point.show, true);
+    assert.equal(entity.label.show, true);
+    assert.equal(entity.model.show, false);
+    assert.equal(h.element('satRender').disabled, true);
+    assert.equal(h.element('satRender').value, 'model');
+    assert.equal(h.cesiumCalls.at(-1)[1].destination, 'RECT_MAX');
+    h.element('sceneMode').value = '3d';
+    h.api.applySceneMode();
+    assert.equal(h.api.state.satEntities.get('back'), entity);
+    assert.equal(h.api.state.selectedId, 'back');
+    assert.equal(entity.model.show, true);
+    assert.equal(entity.point.show, false);
+    assert.equal(h.element('satRender').disabled, false);
+    h.element('satRender').value = 'point';
+    h.api.updateSatelliteStyles();
+    assert.equal(entity.point.show, false);
+    h.element('earthOpacity').value = '0.5';
+    h.api.applyEarthDisplay();
+    assert.equal(entity.point.show, true, 'translucent Earth must not hide far-side points');
+    checks++;
+  }
+
+  // Both 2D basemaps are local, and dimming/switching never removes overlays.
+  {
+    const h = setup({ sceneMode: '2d', earthStyle: 'outline', earthOpacity: '0.5' });
+    const removed = [];
+    h.viewer.imageryLayers.remove = (layer, destroy) => removed.push({ layer, destroy });
+    const overlay = { tag: 'heatmap' };
+    h.api.state.coverageLayers = [overlay];
+    await h.api.applyEarthSource();
+    const outline = h.api.state.baseLayer;
+    assert.equal(outline.provider.url, '/static/earth_outline.png');
+    assert.equal(outline.alpha, .5);
+    assert.equal(h.viewer.scene.globe.translucency.enabled, false);
+    assert.equal(h.element('earthSource').disabled, true);
+    h.element('earthStyle').value = 'image';
+    await h.api.applyEarthSource();
+    assert.equal(h.api.state.baseLayer.provider.url, '/static/earth_blue_marble_2048.jpg');
+    assert.deepEqual(removed, [{ layer: outline, destroy: true }]);
+    assert.equal(h.api.state.coverageLayers[0], overlay);
+    assert.equal(h.element('earthSource').disabled, false);
+    h.element('sceneMode').value = '3d';
+    h.api.applySceneMode();
+    assert.equal(h.api.state.baseLayer.alpha, 1);
+    assert.equal(h.viewer.scene.globe.translucency.enabled, true);
+    checks++;
+  }
+
+  // Late online success/failure must not overwrite the newer outline choice.
+  for (const fail of [false, true]) {
+    const h = setup();
+    await h.api.applyEarthSource();
+    const original = h.api.state.baseLayer;
+    let settle;
+    h.Cesium.ArcGisMapServerImageryProvider.fromUrl = () => new Promise((resolve, reject) => {
+      settle = () => fail ? reject(new Error('late network failure')) : resolve({ tag: 'late online' });
+    });
+    h.element('earthSource').value = 'online';
+    const pending = h.api.applyEarthSource();
+    assert.equal(h.api.state.baseLayer, original, 'keep the old map until its replacement is ready');
+    h.element('earthStyle').value = 'outline';
+    await h.api.applyEarthSource();
+    const latest = h.api.state.baseLayer;
+    settle();
+    await pending;
+    assert.equal(h.api.state.baseLayer, latest);
+    assert.equal(h.element('earthSource').value, 'online');
+    checks++;
+  }
 
   // Stable layers retain their line/material objects over 120 playback updates.
   {
@@ -357,6 +441,13 @@ async function run() {
     await h3.api.applyEarthSource();
     assert.equal(h3.element('earthSource').value, 'offline', 'a failed online layer must fall back to offline');
     assert.equal(h3.api.state.baseLayer.provider.tag, 'single');
+    // If the fallback also fails, retain the displayed map and report failure.
+    const previous = h3.api.state.baseLayer;
+    h3.element('earthSource').value = 'online';
+    h3.Cesium.SingleTileImageryProvider.fromUrl = async () => { throw new Error('local asset missing'); };
+    await h3.api.applyEarthSource();
+    assert.equal(h3.api.state.baseLayer, previous);
+    assert.ok(h3.element('status').textContent.includes('local asset missing'));
     checks++;
   }
 

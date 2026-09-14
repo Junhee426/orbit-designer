@@ -5,6 +5,7 @@
   const CDN_BASE = `https://cesium.com/downloads/cesiumjs/releases/${CVER}/Build/Cesium/`;
   const LOCAL_BASE = '/static/vendor/cesium/';
   const OFFLINE_EARTH = '/static/earth_blue_marble_2048.jpg';
+  const OUTLINE_EARTH = '/static/earth_outline.png';
   const SAT_MODELS = {
     default: '/static/kleo_satellite.glb',
     compact: '/static/kleo_satellite_compact.glb',
@@ -145,6 +146,7 @@
     geometrySeq: 0,
     coverageLayers: [],
     baseLayer: null,
+    earthSourceSeq: 0,
     boundaryDataSource: null,
     boundaryData: null,
     boundaryFallback: null,
@@ -720,35 +722,62 @@
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     await applyEarthSource();
-    applyEarthDisplay();
-    flyGlobal(true)
+    applySceneMode()
   }
+
+  function isMap2D() {
+    return $('sceneMode').value === '2d';
+  }
+
+  function applySceneMode() {
+    if (!state.viewer) return;
+    const flat = isMap2D(), scene = state.viewer.scene;
+    state.viewer.camera.cancelFlight();
+    // Immediate transitions keep playback and selection in the same scene.
+    if (flat) scene.morphTo2D(0);
+    else scene.morphTo3D(0);
+    $('cesiumContainer').setAttribute('aria-label', flat ? '위성 궤도 2D 지도' : '위성 궤도 3D 지도');
+    $('mapModeNote').textContent = flat ? '2D에서는 위성을 점 마커로 표시합니다.' : '드래그로 회전 · 휠로 확대';
+    applyEarthDisplay();
+    updateSatelliteStyles();
+    flyGlobal(true);
+  }
+
   async function applyEarthSource() {
     if (!state.viewer) return;
+    const seq = ++state.earthSourceSeq;
+    const outline = $('earthStyle').value === 'outline';
+    const source = outline ? 'outline' : $('earthSource').value;
+    $('earthSource').disabled = outline;
     const layers = state.viewer.imageryLayers;
-    if (state.baseLayer) {
-      layers.remove(state.baseLayer, false);
-      state.baseLayer = null
-    }
     try {
       let provider;
-      if ($('earthSource').value === 'online') {
+      if (source === 'online') {
         provider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(ARCGIS, {
           enablePickFeatures: false
         })
       } else {
-        provider = await Cesium.SingleTileImageryProvider.fromUrl(OFFLINE_EARTH, {
+        provider = await Cesium.SingleTileImageryProvider.fromUrl(outline ? OUTLINE_EARTH : OFFLINE_EARTH, {
           rectangle: Cesium.Rectangle.MAX_VALUE,
-          credit: 'NASA Blue Marble / K-LEO offline texture'
+          credit: outline ? 'Natural Earth · public domain' : 'NASA Blue Marble / K-LEO offline texture'
         })
       }
+      // An older request must never replace the user's latest selection.
+      if (seq !== state.earthSourceSeq) return;
+      const previous = state.baseLayer;
       state.baseLayer = layers.addImageryProvider(provider, 0);
-      setStatus(`Earth imagery: ${$('earthSource').value} · Cesium ${state.cesiumSource}.`, 'good')
+      if (previous) layers.remove(previous, true);
+      applyEarthDisplay();
+      setStatus(outline ? '윤곽 지도를 표시합니다.' : '지구 그림을 표시합니다.', 'good');
+      return true;
     } catch (e) {
-      if ($('earthSource').value === 'online') {
+      if (seq !== state.earthSourceSeq) return;
+      if (source === 'online') {
         $('earthSource').value = 'offline';
+        const loaded = await applyEarthSource();
+        if (!loaded || state.earthSourceSeq !== seq + 1) return;
         setStatus('Online Earth unavailable; switched to offline Blue Marble.', 'warn');
-        return applyEarthSource()
+        return
       }
       setStatus('Earth imagery error: ' + e.message, 'bad')
     }
@@ -759,10 +788,14 @@
     const g = state.viewer.scene.globe;
     g.show = $('earthOn').checked;
     const a = +$('earthOpacity').value;
-    g.translucency.enabled = a < 0.999;
+    // Globe translucency is a 3D effect; dim the base imagery in 2D.
+    g.baseColor = Cesium.Color.fromCssColorString('#07111f');
+    g.translucency.enabled = !isMap2D() && a < 0.999;
     g.translucency.frontFaceAlpha = a;
     g.translucency.backFaceAlpha = Math.min(a, .75);
-    $('earthOpacityValue').textContent = a.toFixed(2)
+    if (state.baseLayer) state.baseLayer.alpha = isMap2D() ? a : 1;
+    $('earthOpacityValue').textContent = a.toFixed(2);
+    updatePointOcclusion();
   }
 
   function satVisualSize() {
@@ -801,11 +834,12 @@
 
   function updatePointOcclusion() {
     if (!state.viewer) return;
-    const pointMode = $('satRender').value === 'point',
+    const pointMode = isMap2D() || $('satRender').value === 'point',
       camera = state.viewer.camera.positionWC;
     for (const [id, e] of state.satEntities) {
       if (pointMode) {
-        const occluded = e._kleoPosition && isEarthOccluded(camera, e._kleoPosition);
+        const occluded = !isMap2D() && +$('earthOpacity').value >= .999 &&
+          e._kleoPosition && isEarthOccluded(camera, e._kleoPosition);
         e.point.show = !occluded;
         e.label.show = !occluded && id === state.selectedId
       } else {
@@ -817,10 +851,11 @@
 
   function updateSatelliteStyles() {
     const sz = satVisualSize(),
-      model = $('satRender').value === 'model',
+      model = !isMap2D() && $('satRender').value === 'model',
       modelUri = selectedSatModel();
     $('satSizeValue').textContent = sz.toFixed(2) + '×';
     $('satModel').disabled = !model;
+    $('satRender').disabled = isMap2D();
     for (const [id, e] of state.satEntities) {
       e.show = !$('serviceOnly').checked || e._kleoServiceVisible === true;
       e.model.show = model;
@@ -1476,7 +1511,8 @@
 
   function flyGlobal(instant = false) {
     if (!state.viewer) return;
-    const destination = Cesium.Cartesian3.fromDegrees(GLOBAL_VIEW.lon, GLOBAL_VIEW.lat, GLOBAL_VIEW.height);
+    const destination = isMap2D() ? Cesium.Rectangle.MAX_VALUE :
+      Cesium.Cartesian3.fromDegrees(GLOBAL_VIEW.lon, GLOBAL_VIEW.lat, GLOBAL_VIEW.height);
     if (instant) {
       state.viewer.camera.setView({
         destination
@@ -1563,6 +1599,8 @@
     $('minEl').addEventListener('change', () => applyServiceSelection(false));
     $('earthOn').addEventListener('change', applyEarthDisplay);
     $('earthSource').addEventListener('change', applyEarthSource);
+    $('earthStyle').addEventListener('change', applyEarthSource);
+    $('sceneMode').addEventListener('change', applySceneMode);
     $('earthOpacity').addEventListener('input', applyEarthDisplay);
     $('satSize').addEventListener('input', updateSatelliteStyles);
     $('satRender').addEventListener('change', updateSatelliteStyles);

@@ -23,3 +23,7 @@ body[data-workspace="analysis"] #settingsPanel>section[data-view="analysis"]:nth
 .service-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #697586; }
 .service-dot.active { width: 9px; height: 9px; background: #48d4f0; box-shadow: 0 0 6px #48d4f080; }
 .service-dot.selected { background: #ffe26a; }
+.map-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px}
+.map-controls label{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.map-controls select{padding:7px 10px;border:1px solid #3a506b;border-radius:6px;background:#0a1625;color:var(--text);font:inherit}
+.map-controls span{margin-left:auto;color:var(--muted);font-size:11px}

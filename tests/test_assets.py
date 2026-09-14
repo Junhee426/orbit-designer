@@ -6,7 +6,7 @@ STATIC = Path("app/static")
 
 
 def test_required_local_visual_assets_exist_and_are_nonempty():
-    for name in ["earth_blue_marble_2048.jpg", "kleo_satellite.glb", "kleo_satellite_compact.glb", "kleo_satellite_broadband.glb", "kleo_satellite_flatpanel.glb", "plotly.min.js"]:
+    for name in ["earth_blue_marble_2048.jpg", "earth_outline.svg", "earth_outline.png", "kleo_satellite.glb", "kleo_satellite_compact.glb", "kleo_satellite_broadband.glb", "kleo_satellite_flatpanel.glb", "plotly.min.js"]:
         p = STATIC / name
         assert p.exists(), name
         assert p.stat().st_size > 1000, name

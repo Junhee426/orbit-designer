@@ -9,6 +9,7 @@ def test_v14_requested_controls_are_present():
     for control_id in [
         'id="mode"', 'id="tleText"', 'id="cesiumContainer"',
         'id="earthOn"', 'id="earthSource"', 'id="earthOpacity"',
+        'id="sceneMode"', 'id="earthStyle"',
         'id="satSize"', 'id="satRender"', 'id="satModel"', 'id="orbitOn"',
         'id="islOn"', 'id="accessOn"', 'id="coverageOn"',
         'id="coverageOpacity"', 'id="timeSlider"', 'id="playBtn"',
