@@ -55,6 +55,8 @@ function syncForm(){
   $('shells').replaceChildren();scenario.configuration.shells.forEach(addShellRow);
   $('custom-observers').replaceChildren();scenario.custom_observers.forEach(addObserverRow);
   $('map-mode').value=scenario.display.mode;$('earth-style').value=scenario.display.earthStyle;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
+  $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',format(scenario.display.satSize,2)+'×');
+  $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',format(scenario.display.orbitWidth,1)+'×');
   modeFields();
 }
 function modeFields(){const mode=modeInput.value;$('shell-section').hidden=mode!=='multi_shell';$('tle-section').hidden=mode!=='tle';
@@ -116,7 +118,7 @@ function draw(){
     ]);
     const edges=scenario.display.isl?islEdges(states):[],cells=[];
     if(scenario.display.heatmap)for(const code of scenario.selection.country_codes){const country=catalog.countries.find(c=>c.code===code),feature=boundaries.features.find(f=>[f.properties.code,f.properties.ADM0_A3,f.properties.ISO_A3,f.properties.adm0_a3].includes(code));cells.push(...coverageGrid(states,country,cfg.commElevation,feature?.geometry));}
-    viewer.update(current,orbits,scenario,observers,selected,edges,cells,domain==='commNav'&&$('nav-performance').open);$('time').value=seconds;text('time-label','T + '+hms(seconds));
+    viewer.update(current,orbits,scenario,observers,selected,edges,cells,domain==='commNav');$('time').value=seconds;text('time-label','T + '+hms(seconds));
     text('route-result','현재 시각의 경로를 계산하세요. 전파지연만 포함하며 Multi-shell은 층 내부 연결입니다.');
   }catch(e){pause();error(e.message);}
 }
@@ -133,7 +135,7 @@ function applyMeta(){
 function applyDomainText(){
   text('analysis-empty-note',domain==='commNav'?'도시별 가시율과 통신 목표 충족률을 먼저 확인하고, 항법 성능 확장에서 정확도와 동시 충족률을 함께 비교할 수 있습니다.':'도시별 가시율과 통신 목표 충족률을 확인하세요.');
   text('station-table-note',domain==='commNav'?'선택한 전체 관측지와 분석기간 기준 · 항법 지표도 표에 포함':'선택한 전체 관측지와 분석기간 기준');
-  text('map-note',(domain==='commNav'?'청록: 통신 LEO · 주황: 통신 접속 · 흰색: 선택 위성. 지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다. 항법 성능 확장을 열면 GNSS·지역항법 위성과 궤도도 함께 표시합니다.':'청록: 통신 LEO · 주황: 통신 접속 · 흰색: 선택 위성. 지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다.')+' 격자는 국가별 사각 분석 범위(해역 포함)이며 도시 가시율과 구분합니다.');
+  text('map-note',(domain==='commNav'?'청록: 통신 LEO · 주황: 통신 접속 · 흰색: 선택 위성. 지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다. GNSS·지역항법 위성과 궤도, 항법 신호를 겸용하는 위성도 함께 표시합니다.':'청록: 통신 LEO · 주황: 통신 접속 · 흰색: 선택 위성. 지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다.')+' 격자는 국가별 사각 분석 범위(해역 포함)이며 도시 가시율과 구분합니다.');
 }
 function setView(next){
   if(!viewMeta[next])return;view=next;document.body.dataset.workspace=next;
@@ -157,7 +159,6 @@ function setDomain(next){
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.tab)));
 document.querySelectorAll('button[data-domain]').forEach(b=>b.addEventListener('click',()=>setDomain(b.dataset.domain)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
-$('nav-performance').addEventListener('toggle',draw);
 $('workspace-action').addEventListener('click',()=>setView($('workspace-action').dataset.go));
 modeInput.addEventListener('change',()=>{if(modeInput.value==='multi_shell'&&!$('shells').children.length)addShellRow({id:'SH1',altitude:1280,inclination:42,planes:8,satellitesPerPlane:16,phasing:1,j2:true});modeFields();});
 $('configuration').addEventListener('input',()=>{clearTimeout(editing);editing=setTimeout(applyInputs,250);});
@@ -177,6 +178,9 @@ $('recenter').addEventListener('click',()=>{const o=activeObserver();viewer.cent
 $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode').value;draw();});
 $('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
+$('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-shape').value;draw();});
+$('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',format(scenario.display.satSize,2)+'×');draw();});
+$('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',format(scenario.display.orbitWidth,1)+'×');draw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});
 $('toggle-settings').addEventListener('click',()=>{const hidden=$('configuration').classList.toggle('collapsed');text('toggle-settings',hidden?'설정 펼치기':'설정 접기');$('toggle-settings').setAttribute('aria-expanded',String(!hidden));});
 

@@ -1,10 +1,18 @@
 import {Globe} from './rendering.js';
 import {orbitState} from './engine.js';
 import {footprint,groundTrack} from './geometry.js';
+function shapeImage(shape){
+  const size=64,c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d');
+  const r=size/2-3,cx=size/2,cy=size/2;ctx.fillStyle='#fff';ctx.beginPath();
+  if(shape==='square')ctx.rect(cx-r,cy-r,r*2,r*2);
+  else if(shape==='diamond'){ctx.moveTo(cx,cy-r);ctx.lineTo(cx+r,cy);ctx.lineTo(cx,cy+r);ctx.lineTo(cx-r,cy);ctx.closePath();}
+  else ctx.arc(cx,cy,r,0,2*Math.PI);
+  ctx.fill();return c;
+}
 export class OrbitViewer {
   constructor(container,onSelect,worldLines=[]) {
     this.container=container;this.onSelect=onSelect;this.worldLines=worldLines;this.points=new Map();this.layers=[];this.outlineEntities=[];this.selected=null;this.earthStyle='image';this.appliedEarthStyle=null;
-    this.uiMode='3d';
+    this.uiMode='3d';this.shapeImages={circle:shapeImage('circle'),square:shapeImage('square'),diamond:shapeImage('diamond')};
     this.canvas=document.createElement('canvas');this.canvas.style.cssText='width:100%;height:100%;display:block';this.canvas.hidden=true;
     this.fallback=new Globe(this.canvas,worldLines);
     try {
@@ -63,19 +71,23 @@ export class OrbitViewer {
     this.setUiMode(scenario.display.mode);
     this.container.dataset.navigation=showNavigation?'visible':'hidden';
     this.applyEarthStyle(scenario.display.earthStyle);
+    this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth);
     if(!this.usingCesium){this.fallback.setFull(showNavigation);this.fallback.set(snapshot,orbits);return;}
     const C=this.C,v=this.viewer;
     const mode=scenario.display.mode==='2d'?C.SceneMode.SCENE2D:C.SceneMode.SCENE3D;
     if(v.scene.mode!==mode){if(mode===C.SceneMode.SCENE2D)v.scene.morphTo2D(0);else v.scene.morphTo3D(0);}
     const xyz=p=>new C.Cartesian3(...p.map(x=>x*1000));
+    const satSize=scenario.display.satSize??1,orbitWidth=scenario.display.orbitWidth??1;
+    const satImage=this.shapeImages[scenario.display.satShape]||this.shapeImages.circle;
     v.entities.suspendEvents();
     const keep=new Set();
     for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let entity=this.points.get(sat.id);
-      if(!entity){entity=v.entities.add({id:sat.id,point:{pixelSize:4}});entity.satId=sat.id;this.points.set(sat.id,entity);}
+      if(!entity){entity=v.entities.add({id:sat.id,billboard:{image:satImage}});entity.satId=sat.id;this.points.set(sat.id,entity);}
       entity.position=xyz(sat.position);
       const navUsed=showNavigation&&sat.navUsed;
-      entity.point.pixelSize=sat.id===selectedId?11:navUsed||sat.link?7:3;
-      entity.point.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
+      const px=(sat.id===selectedId?11:navUsed||sat.link?7:3)*satSize;
+      entity.billboard.image=satImage;entity.billboard.width=px;entity.billboard.height=px;
+      entity.billboard.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
     }
     for(const [id,e]of this.points)if(!keep.has(id)){v.entities.remove(e);this.points.delete(id);}
     for(const e of this.layers)v.entities.remove(e);this.layers=[];
@@ -84,8 +96,8 @@ export class OrbitViewer {
     for(const o of observers)add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}});
     if(snapshot.best)line([snapshot.observer,snapshot.best.position],'#ffb55d',2);
     if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.group==='LEO'?`${o.shell}:${o.plane}`:o.group;if(seen.has(key))continue;seen.add(key);
-      if(o.satrec){line(groundTrack(o,snapshot.minutes),'#344f6a');continue;}
-      const positions=Array.from({length:65},(_,i)=>orbitState(o,snapshot.minutes*60,2*Math.PI*i/64).position);line(positions,'#344f6a');
+      if(o.satrec){line(groundTrack(o,snapshot.minutes),'#344f6a',orbitWidth);continue;}
+      const positions=Array.from({length:65},(_,i)=>orbitState(o,snapshot.minutes*60,2*Math.PI*i/64).position);line(positions,'#344f6a',orbitWidth);
     }}
     const byId=new Map(snapshot.satellites.map(s=>[s.id,s]));
     if(scenario.display.isl)for(const e of edges)line([byId.get(e.a).position,byId.get(e.b).position],'#36685f');
