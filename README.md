@@ -1,5 +1,7 @@
 # Test Orbit Designer V1.2.0
 
+브라우저에서 궤도·통신·항법을 함께 계산하는 **Orbit Lab 2.0 통합판**은 [standalone/README.md](standalone/README.md)를 참고하세요. 저장소 루트에서 `npm ci --ignore-scripts`, `npm run build`, `npm start` 후 `http://127.0.0.1:8080`으로 실행합니다. Windows에서는 `start_browser_windows.bat`를 사용할 수 있습니다. **Render 정적 사이트 배포는 [배포 안내](RENDER_STATIC_DEPLOYMENT_KO.md)를 따릅니다.** 루트 `render.yaml`은 브라우저 통합판용이며 기존 Docker 설정은 `render-docker.yaml`입니다. 아래 문서는 기존 Python/FastAPI 실행판의 설명입니다.
+
 LEO 위성군의 궤도·지상 가시성·2D/3D 시각화와 K-LEO 후보망 비교를 위한 FastAPI + CesiumJS 도구입니다.
 
 ## V1.2.0 변경 사항

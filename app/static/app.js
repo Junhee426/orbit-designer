@@ -403,8 +403,7 @@
         list.appendChild(label)
       }
     }
-    const core = cat.regions.find(x => x.code === 'KLEO_CORE');
-    setCountryChecks(core ? core.countries : ['KOR', 'ARE', 'SGP'])
+    setCountryChecks(['KOR'])
   }
   async function loadServiceCatalog() {
     const r = await fetch('/api/service-regions/catalog');

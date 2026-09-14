@@ -4,8 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_render_blueprint_contract():
-    text = (ROOT / "render.yaml").read_text(encoding="utf-8")
+def test_legacy_render_blueprint_contract():
+    text = (ROOT / "render-docker.yaml").read_text(encoding="utf-8")
     assert "runtime: docker" in text
     assert "region: singapore" in text
     assert "healthCheckPath: /health" in text
