@@ -12,6 +12,7 @@
   <script src="./boot.js"></script><script src="./vendor/cesium/Cesium.js"></script><script type="module" src="./app.js"></script>
 </head>
 <body data-workspace="design" data-domain="commNav"><a class="skip-link" href="#workspace">분석 화면으로 이동</a>
+<div class="error-box boot-error" id="boot-error" role="alert" hidden><p id="boot-error-message"></p><button class="button small" id="boot-retry" type="button">다시 시도</button></div>
 <header class="app-header">
   <div class="identity"><svg class="brand-orbit" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="8" stroke="currentColor" stroke-width="1.5"/><ellipse cx="20" cy="20" rx="19" ry="7" transform="rotate(-35 20 20)" stroke="currentColor" stroke-width="1.5"/><circle cx="33" cy="10" r="3" fill="currentColor"/></svg><div><strong>Test Orbit Designer</strong><p>V2.0 · 궤도·통신·항법 통합 워크스페이스</p></div></div>
   <div class="tab-groups">

@@ -9,7 +9,50 @@ const $=id=>document.getElementById(id);
 // Applied only to string/text fields in the CSV export, never to numeric ones,
 // so a legitimate negative number (e.g. a coordinate) is never mistaken for one.
 const CSV_FORMULA_PREFIX_RE=/^[=+\-@\t\r]/;
-const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
+async function fetchJson(path){
+  const res=await fetch(new URL(path,import.meta.url));
+  if(!res.ok)throw Error(`HTTP ${res.status}`);
+  return res.json();
+}
+// catalog.json is required: the app cannot build its country/city UI, validate
+// scenarios, or run the analysis worker without it. Keep retrying with a clear,
+// dedicated error banner until it loads rather than letting a transient network
+// failure leave the whole app inert.
+async function loadRequiredCatalog(){
+  for(;;){
+    try{
+      const data=await fetchJson('./catalog.json');
+      $('boot-error').hidden=true;
+      return data;
+    }catch(e){
+      $('boot-error-message').textContent=`카탈로그(catalog.json)를 불러오지 못해 시작할 수 없습니다: ${e.message}. 네트워크 연결을 확인한 뒤 다시 시도하세요.`;
+      $('boot-error').hidden=false;
+      await new Promise(resolve=>{$('boot-retry').addEventListener('click',resolve,{once:true});});
+    }
+  }
+}
+// boundaries.geojson (country outlines for the heatmap) and world.json (2D/3D
+// coastline overlay) are optional map layers. A failure loading either must not
+// block the core Walker/TLE orbit and visibility computation, so failures here
+// fall back to an empty dataset instead of rejecting; callers already tolerate
+// missing geometry/lines.
+const optionalLayerWarnings=[];
+async function loadOptionalMapLayer(path,fallback,label){
+  try{
+    return await fetchJson(path);
+  }catch(e){
+    console.warn(`${label} 로딩 실패, 해당 지도 레이어 없이 계속합니다: ${e.message}`);
+    optionalLayerWarnings.push(`${label}을(를) 불러오지 못해 해당 지도 레이어 없이 시작합니다 (${e.message}).`);
+    return fallback;
+  }
+}
+const catalog=await loadRequiredCatalog();
+const [boundaries,worldOutline]=await Promise.all([
+  loadOptionalMapLayer('./boundaries.geojson',{features:[]},'국가 경계 지도'),
+  loadOptionalMapLayer('./world.json',{lines:[]},'세계 윤곽선 지도'),
+]);
+// error() isn't defined until later in this module, so set the banner directly here.
+if(optionalLayerWarnings.length){$('error').textContent=optionalLayerWarnings.join(' ');$('error').hidden=false;}
 let scenario=defaultScenario(),orbits=[],observers=[],current=null,seconds=0,selected=null,worker=null,job=0,playing=null,editing=null,result=null,tradeResult=null,view='design',domain='commNav';
 let lastOrbitKey='',lastSatKey='';
 const format=(v,d=2)=>Number.isFinite(v)?v.toLocaleString('ko-KR',{maximumFractionDigits:d}):'—';
