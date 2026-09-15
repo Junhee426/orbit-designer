@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import math
@@ -59,6 +60,14 @@ def _tle_epoch(line1: str) -> datetime:
     if not math.isfinite(day_of_year):
         raise TLEParseError("TLE epoch must be finite.")
     year = 1900 + yy if yy >= 57 else 2000 + yy
+    days_in_year = 366 if calendar.isleap(year) else 365
+    # Valid range is 001-365 (001-366 in a leap year); a fractional part encodes
+    # time-of-day, so the upper bound allows up to (but not including) the next day.
+    if day_of_year < 1 or day_of_year >= days_in_year + 1:
+        raise TLEParseError(
+            f"TLE epoch day-of-year {day_of_year!r} is out of range for {year} "
+            f"(expected 1-{days_in_year})."
+        )
     try:
         return datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=day_of_year - 1.0)
     except (ValueError, OverflowError) as exc:
