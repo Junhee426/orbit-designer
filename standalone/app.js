@@ -5,7 +5,54 @@ import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
 
 const $=id=>document.getElementById(id);
-const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
+// A leading =, +, -, @, tab, or CR lets Excel/Sheets read a text cell as a formula.
+// Applied only to string/text fields in the CSV export, never to numeric ones,
+// so a legitimate negative number (e.g. a coordinate) is never mistaken for one.
+const CSV_FORMULA_PREFIX_RE=/^[=+\-@\t\r]/;
+async function fetchJson(path){
+  const res=await fetch(new URL(path,import.meta.url));
+  if(!res.ok)throw Error(`HTTP ${res.status}`);
+  return res.json();
+}
+// catalog.json is required: the app cannot build its country/city UI, validate
+// scenarios, or run the analysis worker without it. Keep retrying with a clear,
+// dedicated error banner until it loads rather than letting a transient network
+// failure leave the whole app inert.
+async function loadRequiredCatalog(){
+  for(;;){
+    try{
+      const data=await fetchJson('./catalog.json');
+      $('boot-error').hidden=true;
+      return data;
+    }catch(e){
+      $('boot-error-message').textContent=`카탈로그(catalog.json)를 불러오지 못해 시작할 수 없습니다: ${e.message}. 네트워크 연결을 확인한 뒤 다시 시도하세요.`;
+      $('boot-error').hidden=false;
+      await new Promise(resolve=>{$('boot-retry').addEventListener('click',resolve,{once:true});});
+    }
+  }
+}
+// boundaries.geojson (country outlines for the heatmap) and world.json (2D/3D
+// coastline overlay) are optional map layers. A failure loading either must not
+// block the core Walker/TLE orbit and visibility computation, so failures here
+// fall back to an empty dataset instead of rejecting; callers already tolerate
+// missing geometry/lines.
+const optionalLayerWarnings=[];
+async function loadOptionalMapLayer(path,fallback,label){
+  try{
+    return await fetchJson(path);
+  }catch(e){
+    console.warn(`${label} 로딩 실패, 해당 지도 레이어 없이 계속합니다: ${e.message}`);
+    optionalLayerWarnings.push(`${label}을(를) 불러오지 못해 해당 지도 레이어 없이 시작합니다 (${e.message}).`);
+    return fallback;
+  }
+}
+const catalog=await loadRequiredCatalog();
+const [boundaries,worldOutline]=await Promise.all([
+  loadOptionalMapLayer('./boundaries.geojson',{features:[]},'국가 경계 지도'),
+  loadOptionalMapLayer('./world.json',{lines:[]},'세계 윤곽선 지도'),
+]);
+// error() isn't defined until later in this module, so set the banner directly here.
+if(optionalLayerWarnings.length){$('error').textContent=optionalLayerWarnings.join(' ');$('error').hidden=false;}
 let scenario=defaultScenario(),orbits=[],observers=[],current=null,seconds=0,selected=null,worker=null,job=0,playing=null,editing=null,result=null,tradeResult=null,view='design',domain='commNav';
 let lastOrbitKey='',lastSatKey='';
 const format=(v,d=2)=>Number.isFinite(v)?v.toLocaleString('ko-KR',{maximumFractionDigits:d}):'—';
@@ -230,7 +277,7 @@ $('load-scenario').addEventListener('click',()=>$('scenario-file').click());
 $('scenario-file').addEventListener('change',async()=>{const file=$('scenario-file').files[0];if(!file)return;try{if(file.size>2_000_000)throw Error('설정 파일은 2 MB 이하만 지원합니다.');const next=importScenario(JSON.parse(await file.text()),catalog);job++;if(worker)finish('새 설정을 불러와 진행 중 분석을 취소했습니다.');scenario=next;seconds=next.display.time_sec;selected=next.display.selected_satellite;syncForm();refreshConfiguration();setDomain(next.display.domain);error('');}catch(e){error('설정 불러오기 실패: '+e.message);}finally{$('scenario-file').value='';}});
 $('export-json').addEventListener('click',()=>{if(result)download('kleo-results-v2.json',JSON.stringify(result,null,2),'application/json');});
 $('export-trade').addEventListener('click',()=>{if(tradeResult)download('kleo-trade-v2.json',JSON.stringify(tradeResult,null,2),'application/json');});
-$('export-csv').addEventListener('click',()=>{if(!result)return;const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const header=['observer_id','observer_name',...sampleColumns.map(c=>c[0]),'scenario_json','metadata_json','observer_summary_json'];const rows=result.observers.flatMap(row=>row.samples.map(s=>[row.observer.id,row.observer.name,...sampleColumns.map(([k])=>s[k]),JSON.stringify(result.scenario),JSON.stringify(result.metadata),JSON.stringify(row.summary)]));download('kleo-results-v2.csv','\ufeff'+[header,...rows].map(r=>r.map(quote).join(',')).join('\r\n'),'text/csv;charset=utf-8');});
+$('export-csv').addEventListener('click',()=>{if(!result)return;const quote=v=>{const isNumeric=typeof v==='number';const s=isNumeric?String(v):String(v??'');const safe=!isNumeric&&CSV_FORMULA_PREFIX_RE.test(s)?"'"+s:s;return '"'+safe.replaceAll('"','""')+'"';};const header=['observer_id','observer_name',...sampleColumns.map(c=>c[0]),'scenario_json','metadata_json','observer_summary_json'];const rows=result.observers.flatMap(row=>row.samples.map(s=>[row.observer.id,row.observer.name,...sampleColumns.map(([k])=>s[k]),JSON.stringify(result.scenario),JSON.stringify(result.metadata),JSON.stringify(row.summary)]));download('kleo-results-v2.csv','\ufeff'+[header,...rows].map(r=>r.map(quote).join(',')).join('\r\n'),'text/csv;charset=utf-8');});
 $('share').addEventListener('click',async()=>{if(!applyInputs())return;const hash='scenario='+encodeURIComponent(JSON.stringify(scenario));if(hash.length>20000){error('큰 시나리오는 설정 JSON 파일로 공유해 주세요.');return;}const url=new URL(location.href);url.hash=hash;history.replaceState(null,'',url);try{await navigator.clipboard.writeText(url.href);text('status','설정 공유 링크를 복사했습니다.');}catch{text('status','주소창의 링크를 복사해 주세요.');}});
 try{const params=new URLSearchParams(location.hash.slice(1)),shared=params.get('scenario')??params.get('cfg');if(shared){scenario=importScenario(JSON.parse(shared),catalog);seconds=scenario.display.time_sec;selected=scenario.display.selected_satellite;}}catch(e){error('공유 설정을 읽지 못해 기본 설정으로 시작합니다: '+e.message);}
 syncForm();scenario=validateScenario(scenario,catalog);refreshConfiguration();setDomain(scenario.display.domain);
