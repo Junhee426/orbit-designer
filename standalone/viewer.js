@@ -13,7 +13,7 @@ export class OrbitViewer {
   constructor(container,onSelect,worldLines=[]) {
     this.container=container;this.onSelect=onSelect;this.worldLines=worldLines;this.points=new Map();this.layers=[];this.outlineEntities=[];this.selected=null;this.earthStyle='image';this.appliedEarthStyle=null;
     this.uiMode='3d';this.shapeImages={circle:shapeImage('circle'),square:shapeImage('square'),diamond:shapeImage('diamond')};
-    this.canvas=document.createElement('canvas');this.canvas.style.cssText='width:100%;height:100%;display:block';this.canvas.hidden=true;
+    this.canvas=document.createElement('canvas');this.canvas.style.cssText='width:100%;height:100%;display:block;touch-action:none';this.canvas.hidden=true;
     this.fallback=new Globe(this.canvas,worldLines);
     try {
       const C=globalThis.Cesium;if(!C)throw Error('지도 라이브러리 없음');this.C=C;
@@ -34,15 +34,25 @@ export class OrbitViewer {
     }
   }
   get usingCesium(){return !!this.viewer&&(this.uiMode==='3d'||this.uiMode==='2d');}
-  setUiMode(mode){
+  setUiMode(mode,redraw=true){
     if(!['3d','2d','2d-globe','2d-map'].includes(mode)||mode===this.uiMode)return;
     this.uiMode=mode;
     const wantCesium=(mode==='3d'||mode==='2d')&&!!this.viewer;
     if(this.cesiumContainer)this.cesiumContainer.hidden=!wantCesium;
     this.canvas.hidden=wantCesium;
-    if(!wantCesium)this.fallback.setMode(mode==='2d-map'?'map':'globe');
+    if(!wantCesium)this.fallback.setMode(mode==='2d-map'?'map':'globe',redraw);
   }
   center(lon,lat){if(this.usingCesium)this.viewer.camera.setView({destination:this.C.Cartesian3.fromDegrees(lon,lat,14000000)});else this.fallback.center(lat,lon);}
+  zoom(factor){
+    if(!Number.isFinite(factor)||factor<=0)return;
+    if(!this.usingCesium){this.fallback.zoom(factor);return;}
+    const camera=this.viewer.camera,height=camera.positionCartographic.height;
+    if(!Number.isFinite(height)||height<=0)return;
+    camera.cancelFlight();
+    const target=Math.max(100,Math.min(100000000,height/factor));
+    camera.zoomIn(height-target);
+    this.viewer.scene.requestRender();
+  }
   ensureEarthOutline(){
     if(!this.viewer||this.outlineEntities.length)return;
     const C=this.C,v=this.viewer,add=(points,color,width)=>{
@@ -54,9 +64,9 @@ export class OrbitViewer {
     for(let lon=-180;lon<180;lon+=30)add(Array.from({length:61},(_,i)=>[-90+i*3,lon]),'#203f55',.7);
     for(const line of this.worldLines)add(line,'#5f8aa3',1.1);
   }
-  applyEarthStyle(style='image',force=false){
+  applyEarthStyle(style='image',force=false,redraw=true){
     this.earthStyle=style==='outline'?'outline':'image';this.container.dataset.earthStyle=this.earthStyle;
-    this.fallback?.setEarthStyle(this.earthStyle);
+    this.fallback?.setEarthStyle(this.earthStyle,redraw);
     if(!this.usingCesium)return;
     if(!force&&this.appliedEarthStyle===this.earthStyle)return;
     const outline=this.earthStyle==='outline';if(outline)this.ensureEarthOutline();
@@ -68,12 +78,12 @@ export class OrbitViewer {
   }
   update(snapshot,orbits,scenario,observers,selectedId,edges=[],cells=[],showNavigation=false) {
     this.selected=selectedId;
-    this.setUiMode(scenario.display.mode);
+    this.setUiMode(scenario.display.mode,false);
     this.container.dataset.navigation=showNavigation?'visible':'hidden';
-    this.applyEarthStyle(scenario.display.earthStyle);
-    this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth);
+    this.applyEarthStyle(scenario.display.earthStyle,false,false);
+    this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth,false);
     if(!this.usingCesium){
-      this.fallback.setFull(showNavigation);
+      this.fallback.setFull(showNavigation,false);
       this.fallback.setLayers(scenario.display.orbits,scenario.display.isl,scenario.display.heatmap,scenario.display.footprint,scenario.configuration.commElevation);
       this.fallback.set(snapshot,orbits,selectedId,edges,cells);
       return;
@@ -100,7 +110,7 @@ export class OrbitViewer {
     const line=(positions,color,width=1)=>add({polyline:{positions:positions.map(xyz),width,material:C.Color.fromCssColorString(color),arcType:C.ArcType.NONE}});
     for(const o of observers)add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}});
     if(snapshot.best)line([snapshot.observer,snapshot.best.position],'#ffb55d',2);
-    if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.group==='LEO'?`${o.shell}:${o.plane}`:o.group;if(seen.has(key))continue;seen.add(key);
+    if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:o.group;if(seen.has(key))continue;seen.add(key);
       if(o.satrec){line(groundTrack(o,snapshot.minutes),'#344f6a',orbitWidth);continue;}
       const positions=Array.from({length:65},(_,i)=>orbitState(o,snapshot.minutes*60,2*Math.PI*i/64).position);line(positions,'#344f6a',orbitWidth);
     }}

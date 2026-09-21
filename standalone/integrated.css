@@ -44,3 +44,8 @@ main{min-width:0;max-width:1800px;width:100%;margin:0 auto;padding:27px 28px 20p
 @media(max-width:430px){.identity p{max-width:230px}.header-actions .button{flex:1}.snapshot-metrics,.analysis-metrics{grid-template-columns:1fr}.detail-grid.wide{grid-template-columns:1fr 1fr}.countries{grid-template-columns:1fr 1fr}.globe-panel #globe{height:340px}}
 @media(pointer:coarse){.button,.tab,.field input,.field select,.observer-choice select{min-height:44px}}
 @media(prefers-reduced-motion:no-preference){.button,.tab{transition:background .15s,border-color .15s,color .15s}}
+
+.globe-viewport{position:relative}
+.zoom-controls{position:absolute;top:14px;right:14px;z-index:5;display:grid;gap:6px}
+.zoom-controls .button{width:44px;height:44px;padding:0;display:grid;place-items:center;font-size:26px;line-height:1;background:rgba(10,24,40,.94);border:1px solid #52718d;border-radius:8px;color:#e8f2fc;box-shadow:0 2px 8px #0004}
+.zoom-controls .button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}

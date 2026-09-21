@@ -2,12 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {DEFAULT_CONFIG,buildConstellations,orbitState,observerFrame,observe,statesAt,geometryAt,evaluateSnapshot,compactSample,linkBudget,positionAccuracy,parseTLE,validateConfig} from '../../standalone/engine.js';
-import {intervalSummary,analyze,tradeStudy} from '../../standalone/analysis.js';
+import {intervalSummary,analyze,tradeStudy,sortTradeCandidates} from '../../standalone/analysis.js';
 import {defaultScenario,validateScenario,importScenario,observersFor,sampleTimes,analysisKey} from '../../standalone/scenario.js';
 import {islEdges,routeBetween,footprint,coverageGrid,insideGeometry} from '../../standalone/geometry.js';
 const read=path=>JSON.parse(readFileSync(new URL(path,import.meta.url),'utf8'));
 const reference=read('./reference.json'),catalog=read('../../standalone/catalog.json');
 const close=(a,b,tol=1e-8)=>assert.ok(Math.abs(a-b)<tol,`${a} != ${b}`);
+test('trade sorting follows the visible domain without mutating stored results',()=>{
+  const candidates=[{altitude:500,satellites:128,comm:98,joint:90},{altitude:888,satellites:128,comm:100,joint:80},{altitude:1280,satellites:256,comm:100,joint:95}];
+  const original=structuredClone(candidates);
+  assert.deepEqual(sortTradeCandidates(candidates,'comm').map(c=>c.altitude),[888,1280,500]);
+  assert.deepEqual(sortTradeCandidates(candidates,'commNav').map(c=>c.altitude),[1280,500,888]);
+  assert.deepEqual(candidates,original);
+});
 test('J2 on/off positions and full-day geometric metrics match the Python engine',()=>{
   for(const c of reference.walker){const cfg={...DEFAULT_CONFIG,altitude:c.altitude,j2:c.j2};const orbits=buildConstellations(cfg);
     c.times.forEach((t,i)=>c.indices.forEach((index,k)=>orbitState(orbits[index],t).position.forEach((v,j)=>close(v,c.positions[i][k][j],1e-7))));

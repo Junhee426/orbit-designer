@@ -56,3 +56,97 @@ test('mobile layout runs with locally served assets',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');await page.locator('#toggle-settings').click();await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('5');await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);expect(overflow).toBe(false);await page.screenshot({path:'outputs/standalone-mobile.png',fullPage:true});
 });
+
+test('zoom buttons change every map mode without changing simulation state',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('#satellite').selectOption({index:1});
+  const selected=await page.locator('#satellite').inputValue();
+  await page.evaluate(()=>{
+    const original=Cesium.Camera.prototype.zoomIn;
+    window.zoomSamples=[];
+    Cesium.Camera.prototype.zoomIn=function(amount){
+      const before=this.positionCartographic.height;
+      original.call(this,amount);
+      window.zoomSamples.push([before,this.positionCartographic.height]);
+    };
+  });
+  for(const mode of ['3d','2d']){
+    await page.locator('#map-mode').selectOption(mode);
+    await page.getByRole('button',{name:'지구 확대',exact:true}).click();
+    const closer=await page.evaluate(()=>window.zoomSamples.at(-1));
+    expect(closer[1]).toBeLessThan(closer[0]);
+    await page.getByRole('button',{name:'지구 축소',exact:true}).click();
+    const farther=await page.evaluate(()=>window.zoomSamples.at(-1));
+    expect(farther[1]).toBeGreaterThan(farther[0]);
+  }
+  for(const mode of ['2d-globe','2d-map']){
+    await page.locator('#map-mode').selectOption(mode);
+    const canvas=page.locator('#globe > canvas');
+    const before=await canvas.evaluate(c=>c.toDataURL());
+    await page.locator('#zoom-in').click();
+    expect(await canvas.evaluate(c=>c.toDataURL())).not.toBe(before);
+    await page.locator('#zoom-out').click();
+    expect(await canvas.evaluate(c=>c.toDataURL())).toBe(before);
+  }
+  await expect(page.locator('#satellite')).toHaveValue(selected);
+  await expect(page.locator('#time')).toHaveValue('0');
+  await expect(page.locator('#error')).toBeHidden();expect(errors).toEqual([]);
+});
+
+test('TLE renders and zooms in lightweight modes without WebGL',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/vendor/cesium/Cesium.js',route=>route.abort());
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-config="mode"]').selectOption('tle');
+  await page.locator('#example-tle').click();
+  for(const mode of ['3d','2d-globe','2d-map']){
+    await page.locator('#map-mode').selectOption(mode);
+    await page.locator('#zoom-in').click();await page.locator('#zoom-out').click();
+    await expect(page.locator('#globe > canvas')).toBeVisible();
+    await expect(page.locator('#error')).toBeHidden();
+  }
+  expect(errors).toEqual([]);
+});
+
+test('existing trade results reorder on domain changes and export the displayed order',async({page})=>{
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-tab="trade"]').click();
+  await page.locator('[data-config="horizontalTarget"]').fill('0.1');
+  await page.locator('#run-trade').click();await expect(page.locator('#status')).toHaveText('분석 완료');
+  const first=page.locator('#trade-table tbody tr').first().locator('td').first();
+  await expect(first).toHaveText('500');
+  await page.locator('button[data-domain="comm"]').click();
+  await expect(first).toHaveText('888');
+  await expect(page.locator('#trade-note')).toContainText('통신 충족률 높은 순');
+  const downloaded=page.waitForEvent('download');await page.locator('#export-trade').click();
+  const stream=await (await downloaded).createReadStream(),chunks=[];
+  for await(const c of stream)chunks.push(c);
+  const data=JSON.parse(Buffer.concat(chunks).toString());
+  expect(data.sort_metric).toBe('comm');expect(data.candidates[0].altitude).toBe(888);
+  await page.locator('button[data-domain="commNav"]').click();
+  await expect(first).toHaveText('500');
+  await expect(page.locator('#trade-note')).toContainText('통신·항법 동시 충족률 높은 순');
+  await expect(page.locator('#status')).toHaveText('분석 완료');
+});
+
+test('flat map recenters after zoom and drag, and follows the selected observer',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('#map-mode').selectOption('2d-map');
+  await page.locator('#zoom-in').click();await page.locator('#zoom-in').click();
+  const canvas=page.locator('#globe > canvas');
+  const before=await canvas.evaluate(c=>c.toDataURL());
+  await page.locator('#recenter').click();
+  expect(await canvas.evaluate(c=>c.toDataURL())).not.toBe(before);
+  const centered=()=>canvas.evaluate(c=>Array.from(c.getContext('2d').getImageData(Math.floor(c.width/2),Math.floor(c.height/2),1,1).data));
+  expect(await centered()).toEqual([255,255,255,255]);
+  const box=await canvas.boundingBox();
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+  await page.mouse.move(box.x+box.width/2+70,box.y+box.height/2+25,{steps:5});await page.mouse.up();
+  expect(await centered()).not.toEqual([255,255,255,255]);
+  await page.locator('#recenter').click();expect(await centered()).toEqual([255,255,255,255]);
+  await page.locator('#observer').selectOption({index:1});
+  expect(await centered()).toEqual([255,255,255,255]);
+  await expect(page.locator('#error')).toBeHidden();expect(errors).toEqual([]);
+});

@@ -31,3 +31,7 @@ body[data-workspace="analysis"] #settingsPanel>section[data-view="analysis"]:nth
 .flat-host[hidden],.cesium-host[hidden],#flatLegend[hidden]{display:none!important}
 #flatLegend:not([hidden]){display:block;pointer-events:none;bottom:auto;top:32px}
 #flatLegendSub{display:block;margin-top:4px}
+
+.zoom-controls{position:absolute;top:64px;right:12px;z-index:5;display:grid;gap:6px}
+.zoom-controls button{width:44px;height:44px;padding:0;display:grid;place-items:center;font-size:26px;line-height:1;background:rgba(10,24,40,.94);border:1px solid #52718d;border-radius:8px;color:#e8f2fc;box-shadow:0 2px 8px #0004}
+.zoom-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}

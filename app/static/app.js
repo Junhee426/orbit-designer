@@ -165,7 +165,7 @@
     snapshotController: null,
     playbackGeneration: 0,
     viewMode: '3d',
-    flatCamera: { lon: 120, lat: 20 },
+    flatCamera: { lon: 120, lat: 20, zoom: 1 },
     flatDrag: null,
     flatHitPoints: [],
     worldOutlines: [],
@@ -751,20 +751,20 @@ function ecefToLLA(v){if(!v)return null;const x=+v[0],y=+v[1],z=+v[2],r=Math.hyp
 function renderFlat(){
   if(!['2d-globe','2d-map'].includes(state.viewMode))return;const canvas=$('flatCanvas'),{ctx,w,h,dpr}=flatCanvasSize(canvas);if(!w||!h)return;
   ctx.clearRect(0,0,w,h);
-  const radius=Math.min(w*.4,h*.43),cx=w/2,cy=h*.46,d=Math.PI/180,map=state.viewMode==='2d-map';
+  const zoom=state.flatCamera.zoom,radius=Math.min(w*.4,h*.43)*zoom,cx=w/2,cy=h*.46,d=Math.PI/180,map=state.viewMode==='2d-map';
   const sats=state.snapshot?.satellites||[],alts=sats.map(s=>+s.altitude_km).filter(Number.isFinite);
   const viz=state.snapshot?.visualization||{};
   const altMin=alts.length?Math.min(...alts):null,altMax=alts.length?Math.max(...alts):null;
   const altSize=alt=>{if(alt==null||!Number.isFinite(+alt))return 2.6;if(altMax==null||altMax<=altMin)return 3.4;return 2.4+3.2*((+alt-altMin)/(altMax-altMin))};
   const project=(lat,lon,altKm)=>{
-    if(map)return{x:18+(lon+180)/360*(w-36),y:20+(90-lat)/180*(h-60),front:true};
+    if(map)return{x:w/2+lon/360*(w-36)*zoom,y:h/2-10-lat/180*(h-60)*zoom,front:true};
     const a=lat*d,b=(lon-state.flatCamera.lon)*d,c=state.flatCamera.lat*d;
     const z=Math.sin(c)*Math.sin(a)+Math.cos(c)*Math.cos(a)*Math.cos(b);
     const rr=altKm==null?radius:radius*(1+Math.min(Math.max(+altKm,0),4000)/EARTH_R_KM);
     return{x:cx+rr*Math.cos(a)*Math.sin(b),y:cy-rr*(Math.cos(c)*Math.sin(a)-Math.sin(c)*Math.cos(a)*Math.cos(b)),front:z>=0};
   };
   if(!map&&$('earthOn').checked&&$('earthStyle').value!=='outline'){ctx.save();ctx.globalAlpha=+$('earthOpacity').value;paintGlobeTexture(ctx,cx,cy,radius,dpr,state.flatCamera.lat,state.flatCamera.lon);ctx.restore();}
-  function line(points,color,width=1,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);let prev=null;for(const pt of points){const p=project(pt[0],pt[1],pt[2]);if(p.front){if(!prev||Math.abs(p.x-prev.x)>w/2)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);prev=p;}else prev=null;}ctx.stroke();ctx.setLineDash([]);}
+  function line(points,color,width=1,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);let prev=null;for(const pt of points){const p=project(pt[0],pt[1],pt[2]);if(p.front){if(!prev||Math.abs(p.x-prev.x)>(map?(w-36)*zoom/2:w*zoom/2))ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);prev=p;}else prev=null;}ctx.stroke();ctx.setLineDash([]);}
   for(let lat=-60;lat<=60;lat+=30)line(Array.from({length:181},(_,i)=>[lat,-180+i*2]),lat===0?'#34607a':'#25435a',.7);
   for(let lon=-180;lon<180;lon+=30)line(Array.from({length:91},(_,i)=>[-90+i*2,lon]),'#25435a',.7);
   for(const outline of state.worldOutlines)line(outline,'#45758a',.85);
@@ -1704,6 +1704,22 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     })
   }
 
+  function zoomView(factor) {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    if (['2d-globe', '2d-map'].includes(state.viewMode)) {
+      state.flatCamera.zoom = Math.max(.5, Math.min(8, state.flatCamera.zoom * factor));
+      renderFlat();
+      return;
+    }
+    if (!state.viewer) return;
+    const camera = state.viewer.camera, height = camera.positionCartographic.height;
+    if (!Number.isFinite(height) || height <= 0) return;
+    camera.cancelFlight();
+    const target = Math.max(100, Math.min(100000000, height / factor));
+    camera.zoomIn(height - target);
+    state.viewer.scene.requestRender();
+  }
+
   function refetchLayers() {
     // Playback reads the latest layer controls on its next frame. A separate
     // request here would abort its active frame and break the playback loop.
@@ -1792,6 +1808,8 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     });
     $('heatRes').addEventListener('change', refetchLayers);
     $('globalView').addEventListener('click', () => flyGlobal(false));
+    $('zoomIn').addEventListener('click', () => zoomView(1.25));
+    $('zoomOut').addEventListener('click', () => zoomView(1 / 1.25));
     $('serviceView').addEventListener('click', flyServiceArea);
     $('selectedView').addEventListener('click', flySelected)
   }

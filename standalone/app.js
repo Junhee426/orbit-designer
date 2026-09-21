@@ -3,6 +3,7 @@ import {defaultScenario,validateScenario,importScenario,observersFor,analysisKey
 import {skyPlot,lineChart} from './rendering.js';
 import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
+import {sortTradeCandidates} from './analysis.js';
 
 const $=id=>document.getElementById(id);
 const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
@@ -173,6 +174,8 @@ $('play').addEventListener('click',()=>{if(playing){pause();return;}text('play',
 $('time').addEventListener('input',()=>{pause();seconds=Number($('time').value);draw();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 $('recenter').addEventListener('click',()=>{const o=activeObserver();viewer.center(o.lon,o.lat);});
+$('zoom-in').addEventListener('click',()=>viewer.zoom(1.25));
+$('zoom-out').addEventListener('click',()=>viewer.zoom(1/1.25));
 $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode').value;draw();});
 $('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
@@ -214,10 +217,10 @@ function renderResults(){if(!result)return;const stale=analysisKey(result.scenar
   const sampleCols=visibleColumns(sampleColumns,navSampleKeys);
   table('sample-table',sampleCols.map(c=>c[1]),row.samples.map(r=>sampleCols.map(([k])=>value(r[k]))));$('export-json').disabled=false;$('export-csv').disabled=false;
 }
-function renderTrade(){if(!tradeResult)return;$('export-trade').disabled=false;const stale=analysisKey(tradeResult.scenario)!==analysisKey(scenario);$('trade-note').classList.toggle('stale',stale);text('trade-note',`${stale?'이전 설정의 결과 · ':''}${tradeResult.scenario.analysis.duration_min}분 · 모든 관측지 중 최저 충족률 / 최장 단절 · 비용 최적화가 아닌 성능 비교`);
+function renderTrade(){if(!tradeResult)return;$('export-trade').disabled=false;const stale=analysisKey(tradeResult.scenario)!==analysisKey(scenario);$('trade-note').classList.toggle('stale',stale);text('trade-note',`${stale?'이전 설정의 결과 · ':''}${tradeResult.scenario.analysis.duration_min}분 · 모든 관측지 중 최저 충족률 / 최장 단절 · ${domain==='comm'?'통신':'통신·항법 동시'} 충족률 높은 순, 동률이면 위성 수 적은 순 · 비용 최적화가 아닌 성능 비교`);
   const tradeKeys=domain==='commNav'?['geometric','comm','nav','joint','outage']:['geometric','comm','outage'];
   const tradeHeaders=['고도 km','궤도면','위성 수','기하 가시율 %','통신 %',...(domain==='commNav'?['항법 %','동시 %']:[]),'최장 단절 s'];
-  table('trade-table',tradeHeaders,tradeResult.candidates.map(c=>[c.altitude,c.planes,c.satellites,...tradeKeys.map(k=>format(c[k]))]));}
+  table('trade-table',tradeHeaders,sortTradeCandidates(tradeResult.candidates,domain).map(c=>[c.altitude,c.planes,c.satellites,...tradeKeys.map(k=>format(c[k]))]));}
 $('sweep').addEventListener('click',()=>{if(!applyInputs())return;try{const o=activeObserver(),cfg={...scenario.configuration,location:'custom',latitude:o.lat,longitude:o.lon};const axis=$('sweep-axis').value;
   if(cfg.mode!=='walker'&&!['navShare','payloadPercent'].includes(axis))throw Error('궤도 변수 스윕은 단일 Walker 모드에서 실행합니다.');
   const meta={navShare:[40,'항법 시간 (%)'],payloadPercent:[100,'항법 탑재 (%)'],altitude:[2000,'고도 (km)'],inclination:[90,'경사각 (°)'],planes:[32,'궤도면 수'],satellitesPerPlane:[32,'면당 위성 수']}[axis];
@@ -229,7 +232,7 @@ $('save-scenario').addEventListener('click',()=>{if(applyInputs())download('kleo
 $('load-scenario').addEventListener('click',()=>$('scenario-file').click());
 $('scenario-file').addEventListener('change',async()=>{const file=$('scenario-file').files[0];if(!file)return;try{if(file.size>2_000_000)throw Error('설정 파일은 2 MB 이하만 지원합니다.');const next=importScenario(JSON.parse(await file.text()),catalog);job++;if(worker)finish('새 설정을 불러와 진행 중 분석을 취소했습니다.');scenario=next;seconds=next.display.time_sec;selected=next.display.selected_satellite;syncForm();refreshConfiguration();setDomain(next.display.domain);error('');}catch(e){error('설정 불러오기 실패: '+e.message);}finally{$('scenario-file').value='';}});
 $('export-json').addEventListener('click',()=>{if(result)download('kleo-results-v2.json',JSON.stringify(result,null,2),'application/json');});
-$('export-trade').addEventListener('click',()=>{if(tradeResult)download('kleo-trade-v2.json',JSON.stringify(tradeResult,null,2),'application/json');});
+$('export-trade').addEventListener('click',()=>{if(tradeResult)download('kleo-trade-v2.json',JSON.stringify({...tradeResult,candidates:sortTradeCandidates(tradeResult.candidates,domain),sort_metric:domain==='comm'?'comm':'joint'},null,2),'application/json');});
 $('export-csv').addEventListener('click',()=>{if(!result)return;const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const header=['observer_id','observer_name',...sampleColumns.map(c=>c[0]),'scenario_json','metadata_json','observer_summary_json'];const rows=result.observers.flatMap(row=>row.samples.map(s=>[row.observer.id,row.observer.name,...sampleColumns.map(([k])=>s[k]),JSON.stringify(result.scenario),JSON.stringify(result.metadata),JSON.stringify(row.summary)]));download('kleo-results-v2.csv','\ufeff'+[header,...rows].map(r=>r.map(quote).join(',')).join('\r\n'),'text/csv;charset=utf-8');});
 $('share').addEventListener('click',async()=>{if(!applyInputs())return;const hash='scenario='+encodeURIComponent(JSON.stringify(scenario));if(hash.length>20000){error('큰 시나리오는 설정 JSON 파일로 공유해 주세요.');return;}const url=new URL(location.href);url.hash=hash;history.replaceState(null,'',url);try{await navigator.clipboard.writeText(url.href);text('status','설정 공유 링크를 복사했습니다.');}catch{text('status','주소창의 링크를 복사해 주세요.');}});
 try{const params=new URLSearchParams(location.hash.slice(1)),shared=params.get('scenario')??params.get('cfg');if(shared){scenario=importScenario(JSON.parse(shared),catalog);seconds=scenario.display.time_sec;selected=scenario.display.selected_satellite;}}catch(e){error('공유 설정을 읽지 못해 기본 설정으로 시작합니다: '+e.message);}

@@ -1,6 +1,11 @@
 import {buildConstellations,statesAt,geometryAt,evaluateSnapshot,compactSample,quantile} from './engine.js';
 import {sampleTimes,observersFor,validateScenario,metadata} from './scenario.js';
 
+export function sortTradeCandidates(candidates,domain) {
+  const metric=domain==='comm'?'comm':'joint';
+  return [...candidates].sort((a,b)=>b[metric]-a[metric]||a.satellites-b.satellites||a.altitude-b.altitude);
+}
+
 export function intervalSummary(samples,config) {
   if(samples.length<2) throw Error('종료 시각을 포함한 두 표본 이상이 필요합니다.');
   const dt=samples.slice(1).map((s,i)=>(s.minutes-samples[i].minutes)*60);
@@ -45,5 +50,5 @@ export async function tradeStudy(input,catalog,progress=()=>{}) {
     const sums=analysis.observers.map(o=>o.summary);
     result.push({altitude,planes,satellites:planes*16,geometric:Math.min(...sums.map(s=>s.geometricAvailability)),comm:Math.min(...sums.map(s=>s.commAvailability)),nav:Math.min(...sums.map(s=>s.navAvailability)),joint:Math.min(...sums.map(s=>s.jointAvailability)),outage:Math.max(...sums.map(s=>s.longestOutageSec))});index++;
   }
-  return {scenario,candidates:result.sort((a,b)=>b.joint-a.joint||a.satellites-b.satellites),metadata:await metadata(scenario)};
+  return {scenario,candidates:sortTradeCandidates(result,scenario.display.domain),metadata:await metadata(scenario)};
 }
