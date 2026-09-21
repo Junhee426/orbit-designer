@@ -52,6 +52,23 @@ test('comm-only domain hides nav UI and narrows tables; satellite style controls
   await page.locator('#map-mode').selectOption('2d-globe');await page.waitForTimeout(200);
   expect(errors).toEqual([]);
 });
+test('globe legend reflects domain, satellite shape and active layers',async({page})=>{
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  const labels=async()=>page.locator('#globe-legend .swatch').allTextContents();
+  await expect.poll(labels).toContain('GNSS');
+  expect(await labels()).toContain('지역항법');
+  expect(await labels()).not.toContain('ISL');
+  await expect(page.locator('#globe-legend .mark').first()).toHaveClass(/circle/);
+  await page.locator('#sat-shape').selectOption('square');
+  await expect(page.locator('#globe-legend .mark').first()).not.toHaveClass(/circle/);
+  await page.locator('#show-isl').check();
+  await expect.poll(labels).toContain('ISL');
+  await page.locator('#show-heatmap').check();
+  await expect.poll(labels).toContain('가시 위성 많음');
+  await page.locator('button[data-domain="comm"]').click();
+  const commLabels=await labels();
+  expect(commLabels).not.toContain('GNSS');expect(commLabels).not.toContain('지역항법');expect(commLabels).not.toContain('항법 겸용 LEO');
+});
 test('mobile layout runs with locally served assets',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');await page.locator('#toggle-settings').click();await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('5');await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);expect(overflow).toBe(false);await page.screenshot({path:'outputs/standalone-mobile.png',fullPage:true});
@@ -107,6 +124,31 @@ test('TLE renders and zooms in lightweight modes without WebGL',async({page})=>{
     await expect(page.locator('#error')).toBeHidden();
   }
   expect(errors).toEqual([]);
+});
+
+test('GNSS orbit planes render as distinct Cesium polylines instead of collapsing into one',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-config="phasing"]').fill('0');await page.locator('[data-config="phasing"]').blur();
+  await page.locator('[data-config="planes"]').fill('1');await page.locator('[data-config="planes"]').blur();
+  await page.evaluate(()=>{
+    window.__added=[];
+    const proto=Cesium.EntityCollection.prototype,original=proto.add;
+    proto.add=function(entity){window.__added.push(entity);return original.call(this,entity);};
+  });
+  await page.locator('#show-heatmap').check();
+  const gnssLines=await page.evaluate(()=>{
+    const orbitColor=Cesium.Color.fromCssColorString('#344f6a');
+    const sameColor=m=>{
+      if(!m)return false;
+      if(typeof m.equals==='function')return m.equals(orbitColor);
+      const c=m.color?.getValue?.(Cesium.JulianDate.now());
+      return !!c?.equals?.(orbitColor);
+    };
+    return window.__added.filter(e=>e.polyline&&sameColor(e.polyline.material)).length;
+  });
+  expect(gnssLines).toBeGreaterThanOrEqual(6);
+  await expect(page.locator('#error')).toBeHidden();expect(errors).toEqual([]);
 });
 
 test('existing trade results reorder on domain changes and export the displayed order',async({page})=>{
