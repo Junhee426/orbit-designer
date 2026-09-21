@@ -164,7 +164,7 @@ export function buildConstellations(config) {
     }
   }
   const earthAngle=cfg.mode==='tle'?gstime(new Date(out[0].startMs)):0;
-  return out.map(o => ({ ...o, earthAngle, raanCos: Math.cos(o.raan), raanSin: Math.sin(o.raan), incCos: Math.cos(o.inclination), incSin: Math.sin(o.inclination) }));
+  return out.map(o => o.satrec ? { ...o, earthAngle } : { ...o, earthAngle, raanCos: Math.cos(o.raan), raanSin: Math.sin(o.raan), incCos: Math.cos(o.inclination), incSin: Math.sin(o.inclination) });
 }
 export function observe(state, frame) {
   // Scalar math instead of .map()-built intermediate arrays: called per satellite per sample
