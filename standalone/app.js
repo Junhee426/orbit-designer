@@ -91,7 +91,11 @@ function activeObserver(){return observers.find(o=>o.id===scenario.active_observ
 function cards(id,items){$(id).replaceChildren(...items.map(([label,value,unit='',note=''])=>{const a=document.createElement('article');a.className='metric';const l=document.createElement('span');l.textContent=label;const v=document.createElement('strong');v.textContent=value;const u=document.createElement('small');u.textContent=' '+unit;v.append(u);const p=document.createElement('p');p.textContent=note;a.append(l,v,p);return a;}));}
 function details(id,items){$(id).replaceChildren(...items.map(([label,value])=>{const div=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;div.append(dt,dd);return div;}));}
 const viewer=new OrbitViewer($('globe'),id=>{selected=id;$('satellite').value=id;draw();},worldOutline.lines);
+// Slider drags fire several input events per frame; draw once per frame instead of once per event.
+let drawQueued=0;
+function requestDraw(){if(!drawQueued)drawQueued=requestAnimationFrame(()=>{drawQueued=0;draw();});}
 function draw(){
+  if(drawQueued){cancelAnimationFrame(drawQueued);drawQueued=0;}
   try{
     const states=statesAt(orbits,seconds/60),o=activeObserver(),cfg=scenario.configuration;
     scenario.display.time_sec=seconds;scenario.display.selected_satellite=selected;
@@ -171,7 +175,7 @@ $('observer').addEventListener('change',()=>{scenario.active_observer=$('observe
 $('satellite').addEventListener('change',()=>{selected=$('satellite').value||null;draw();});
 function pause(){clearInterval(playing);playing=null;text('play','재생');$('play').setAttribute('aria-pressed','false');}
 $('play').addEventListener('click',()=>{if(playing){pause();return;}text('play','일시정지');$('play').setAttribute('aria-pressed','true');playing=setInterval(()=>{const end=scenario.analysis.duration_min*60;seconds=seconds>=end?0:Math.min(end,seconds+60);draw();},500);});
-$('time').addEventListener('input',()=>{pause();seconds=Number($('time').value);draw();});
+$('time').addEventListener('input',()=>{pause();seconds=Number($('time').value);requestDraw();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 $('recenter').addEventListener('click',()=>{const o=activeObserver();viewer.center(o.lon,o.lat);});
 $('zoom-in').addEventListener('click',()=>viewer.zoom(1.25));
@@ -180,8 +184,8 @@ $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode')
 $('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
 $('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-shape').value;draw();});
-$('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');draw();});
-$('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');draw();});
+$('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');requestDraw();});
+$('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');requestDraw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});
 $('toggle-settings').addEventListener('click',()=>{const hidden=$('configuration').classList.toggle('collapsed');text('toggle-settings',hidden?'설정 펼치기':'설정 접기');$('toggle-settings').setAttribute('aria-expanded',String(!hidden));});
 

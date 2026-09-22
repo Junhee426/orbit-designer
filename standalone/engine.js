@@ -88,7 +88,7 @@ export function orbitState(orbit, timeSeconds, phaseOverride) {
     if (!result?.position || !result.velocity || orbit.satrec.error) throw new Error(`${orbit.id}: SGP4 전파 실패 (${orbit.satrec.error})`);
     return rotateState(Object.values(result.position), Object.values(result.velocity), gstime(new Date(when)));
   }
-  const a = orbit.radius, n = Math.sqrt(MU / (a * a * a));
+  const a = orbit.radius, n = orbit.meanMotion ?? Math.sqrt(MU / (a * a * a));
   const u = (phaseOverride ?? orbit.phase) + n * timeSeconds;
   const cu = Math.cos(u), su = Math.sin(u);
   // raan/inclination are fixed per orbit; buildConstellations precomputes their cos/sin once
@@ -105,7 +105,8 @@ function rotateState(inertial, velocity, theta) {
   const p = [ct * inertial[0] + st * inertial[1], -st * inertial[0] + ct * inertial[1], inertial[2]];
   const v = [ct * velocity[0] + st * velocity[1] + EARTH_RATE * p[1],
     -st * velocity[0] + ct * velocity[1] - EARTH_RATE * p[0], velocity[2]];
-  if (![...p,...v].every(Number.isFinite)) throw new Error('위성 상태가 유효하지 않습니다.');
+  if (!(Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2]) &&
+    Number.isFinite(v[0]) && Number.isFinite(v[1]) && Number.isFinite(v[2]))) throw new Error('위성 상태가 유효하지 않습니다.');
   return { position: p, velocity: v, inertial, inertialVelocity: velocity };
 }
 export function parseTLE(text, startUtc = '') {
@@ -164,7 +165,8 @@ export function buildConstellations(config) {
     }
   }
   const earthAngle=cfg.mode==='tle'?gstime(new Date(out[0].startMs)):0;
-  return out.map(o => ({ ...o, earthAngle, raanCos: Math.cos(o.raan), raanSin: Math.sin(o.raan), incCos: Math.cos(o.inclination), incSin: Math.sin(o.inclination) }));
+  return out.map(o => ({ ...o, earthAngle, raanCos: Math.cos(o.raan), raanSin: Math.sin(o.raan), incCos: Math.cos(o.inclination), incSin: Math.sin(o.inclination),
+    meanMotion: o.satrec ? undefined : Math.sqrt(MU / (o.radius * o.radius * o.radius)) }));
 }
 export function observe(state, frame) {
   // Scalar math instead of .map()-built intermediate arrays: called per satellite per sample
@@ -208,8 +210,10 @@ export function positionAccuracy(measurements) {
   if (!groups.length || measurements.length < states) return unavailable('가시 위성 부족');
   const normal = Array.from({ length: states }, () => Array(states).fill(0));
   const geometry = Array.from({ length: states }, () => Array(states).fill(0));
+  const row = Array(states).fill(0);
   for (const m of measurements) {
-    const row = [...m.losENU, ...groups.map(group => group === m.group ? 1 : 0)];
+    row[0] = m.losENU[0]; row[1] = m.losENU[1]; row[2] = m.losENU[2];
+    for (let g = 0; g < groups.length; g++) row[3 + g] = groups[g] === m.group ? 1 : 0;
     const weight = 1 / (m.sigma * m.sigma);
     for (let i = 0; i < states; i++) for (let j = 0; j < states; j++) {
       normal[i][j] += row[i] * row[j] * weight;
@@ -245,7 +249,8 @@ export function prepareGeometry(cfg, minutes, constellation) {
   const satellites = statesAt(satList,minutes).map(state => ({...state,...observe(state,frame)}));
   return { minutes, location, observer: frame.position, satellites };
 }
-export function statesAt(orbits,minutes) { return orbits.map(o=>({id:o.id,name:o.name||o.id,group:o.group,payload:o.payload,shell:o.shell,plane:o.plane,slot:o.slot,planes:o.planes,slots:o.slots,...orbitState(o,minutes*60)})); }
+export function statesAt(orbits,minutes) { return orbits.map(o=>{const s=orbitState(o,minutes*60);return {id:o.id,name:o.name||o.id,group:o.group,payload:o.payload,shell:o.shell,plane:o.plane,slot:o.slot,planes:o.planes,slots:o.slots,
+  position:s.position,velocity:s.velocity,inertial:s.inertial,inertialVelocity:s.inertialVelocity};}); }
 export function geometryAt(states,location,minutes) {const frame=observerFrame(location.lat,location.lon);return {minutes,location,observer:frame.position,satellites:states.map(s=>({...s,...observe(s,frame)}))};}
 export function evaluateSnapshot(cfg, geometry) {
   const { minutes, location, observer } = geometry;
@@ -301,6 +306,62 @@ export function compactSample(s) {
     dopplerKHz:s.best?.link.dopplerKHz??null, rangeKm:s.best?.range??null, elevation:s.best?.elevation??null,
     minDelayMs:visible.length?Math.min(...visible.map(v=>v.link.delayMs)):null,
     delayMs: s.best?.link.delayMs ?? null, navPass: s.navPass, commPass: s.commPass, jointPass: s.jointPass };
+}
+// Period-analysis fast path, equal to compactSample(evaluateSnapshot(cfg, geometryAt(states, location, minutes))).
+// It builds no per-satellite objects, and a satellite below every elevation mask costs one dot product;
+// that is most of a large constellation at any instant. Keep the arithmetic in step with observe()/evaluateSnapshot().
+export function sampleAt(cfg, states, location, minutes, frame = observerFrame(location.lat, location.lon)) {
+  const [ox, oy, oz] = frame.position, { east, north, up } = frame;
+  // The margin keeps borderline satellites on the exact asin() comparison below.
+  const floor = Math.sin(Math.min(cfg.commElevation, cfg.navElevation) * RAD) - 1e-9;
+  const leoFraction = cfg.sharing === 'time' ? cfg.navShare / 100 : 0.1;
+  const measurements = [], gnss = [], regional = [], leo = [];
+  let commVisible = 0, navVisibleLEO = 0, best = null, geometric = null, minDelayMs = Infinity;
+  for (const s of states) {
+    const dx = s.position[0] - ox, dy = s.position[1] - oy, dz = s.position[2] - oz;
+    const range = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const lx = dx / range, ly = dy / range, lz = dz / range;
+    const u = lx * up[0] + ly * up[1] + lz * up[2];
+    if (u < floor) continue;
+    const elevation = Math.asin(Math.max(-1, Math.min(1, u))) / RAD;
+    if (s.group === 'LEO' && elevation >= cfg.commElevation) {
+      commVisible++;
+      const rangeRate = s.velocity[0] * lx + s.velocity[1] * ly + s.velocity[2] * lz;
+      const link = linkBudget({ range, rangeRate, payload: s.payload }, cfg);
+      if (!best || link.mbps > best.link.mbps) best = { id: s.id, range, elevation, link };
+      if (!geometric || elevation > geometric.elevation) geometric = { id: s.id, elevation };
+      if (link.delayMs < minDelayMs) minDelayMs = link.delayMs;
+    }
+    if (elevation >= cfg.navElevation && s.payload) {
+      let sigma = null;
+      if (s.group === 'LEO') {
+        if (leoFraction > 0) {
+          const noise = cfg.leoSigma * range / 1000 * Math.sqrt(0.1 / leoFraction);
+          sigma = Math.sqrt(noise * noise + cfg.orbitSigma ** 2 + (cfg.clockNs * 1e-9 * C) ** 2);
+          navVisibleLEO++;
+        }
+      } else sigma = cfg.gnssSigma;
+      if (sigma !== null) {
+        const losENU = [lx * east[0] + ly * east[1] + lz * east[2], lx * north[0] + ly * north[1] + lz * north[2], u];
+        const m = { id: s.id, group: s.group, losENU, sigma };
+        measurements.push(m);
+        if (s.group === 'GNSS') gnss.push(m);
+        else if (s.group === 'REGIONAL') regional.push(m);
+        else leo.push(m);
+      }
+    }
+  }
+  const baseline = positionAccuracy(gnss), gnssLEO = positionAccuracy([...gnss, ...leo]), fusion = positionAccuracy(measurements);
+  const rate = best ? best.link.mbps : 0, link = best?.link;
+  const navPass = fusion.valid && fusion.hrms <= cfg.horizontalTarget, commPass = rate >= cfg.rateTarget;
+  return { minutes, rate, hrms: fusion.hrms, vrms: fusion.vrms, baseline: baseline.hrms,
+    gnssLEO: gnssLEO.hrms, pdop: fusion.pdop, commVisible,
+    leoVisible: navVisibleLEO, gnssVisible: gnss.length, regionalVisible: regional.length,
+    geometricBestId: geometric?.id ?? null, bestId: best?.id ?? null,
+    margin: link?.margin ?? null, snr: link?.snr ?? null, cn0: link?.cn0 ?? null, ebn0: link?.ebn0 ?? null, fspl: link?.fspl ?? null,
+    dopplerKHz: link?.dopplerKHz ?? null, rangeKm: best?.range ?? null, elevation: best?.elevation ?? null,
+    minDelayMs: commVisible ? minDelayMs : null,
+    delayMs: link?.delayMs ?? null, navPass, commPass, jointPass: navPass && commPass };
 }
 export function quantile(values, q) {
   const valid = values.filter(Number.isFinite).sort((a, b) => a - b);
