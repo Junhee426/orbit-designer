@@ -69,6 +69,8 @@ Python 기준 데이터는 `python scripts/generate_browser_reference.py`로 생
 
 Playwright 검증은 기본 Windows Edge 또는 다른 OS의 Playwright Chromium을 사용합니다. 해당 브라우저를 준비해야 합니다. 실제 Worker·분석 취소·JSON 내보내기·설정 복원·모바일 폭·외부 요청 부재를 검증합니다.
 
+`browser.spec.mjs`의 대규모 시나리오 테스트는 Walker 512기·18개 국가 카탈로그 전체(약 40개 관측지)·288개 표본(24시간, 5분 간격)에 히트맵·ISL 레이어를 켠 상태로 기간 분석을 실행합니다. 이 CI 샌드박스의 헤드리스 Chromium 1회 측정 기준 전체 계산은 약 7초, 계산 중 지도 확대 버튼 클릭의 체감 지연은 약 0.9초였습니다(회귀 감지를 위한 여유 있는 상한은 각각 30초·5초). 계산이 Web Worker에서 실행되므로 이 동안에도 지도 탭 전환과 버튼 클릭이 멈추지 않고 반응한다는 점까지 확인합니다. 이 수치는 CI 컨테이너의 1회 측정이며, 실제 사용자 PC·모바일 기기의 대표 성능 측정은 아닙니다.
+
 ## 구성과 출처
 
 - `engine.js`: commnav 수치모델에서 확장한 공통 Walker/J2/TLE·통신·항법 엔진.

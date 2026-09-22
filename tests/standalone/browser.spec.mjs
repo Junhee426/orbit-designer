@@ -172,6 +172,29 @@ test('existing trade results reorder on domain changes and export the displayed 
   await expect(page.locator('#status')).toHaveText('분석 완료');
 });
 
+test('large-scale COMM/PNT analysis (512 satellites, 40+ observers) finishes and keeps the map responsive',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-tab="analysis"]').click();
+  for(const code of ['BHR','KWT','OMN','QAT','SAU','ARE','JPN','KOR','BRN','KHM','IDN','LAO','MYS','MMR','PHL','SGP','THA','VNM']){const box=page.locator(`[data-country="${code}"]`);if(await box.count())await box.check();}
+  await page.locator('#city-count').selectOption('3');
+  await page.locator('[data-tab="design"]').click();
+  await page.locator('[data-config="planes"]').fill('32');await page.locator('[data-config="satellitesPerPlane"]').fill('16');await page.locator('[data-config="planes"]').blur();
+  await expect(page.locator('#orbit-note')).toContainText('512기');
+  await page.locator('#show-heatmap').check();await page.locator('#show-isl').check();
+  await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('1440');await page.locator('#step').fill('300');
+  const started=Date.now();await page.locator('#run').click();
+  // While the worker computes, confirm the map (design tab) still responds to a real interaction instead of freezing the main thread.
+  await page.waitForTimeout(150);await page.locator('[data-tab="design"]').click();
+  const clickStarted=Date.now();await page.getByRole('button',{name:'지구 확대',exact:true}).click();
+  expect(Date.now()-clickStarted).toBeLessThan(5000);
+  await page.locator('[data-tab="analysis"]').click();
+  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('분석 완료'),{timeout:60000});
+  expect(Date.now()-started).toBeLessThan(30000);
+  const rows=await page.locator('#station-table tbody tr').count();expect(rows).toBeGreaterThan(30);
+  expect(errors).toEqual([]);
+});
+
 test('flat map recenters after zoom and drag, and follows the selected observer',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
