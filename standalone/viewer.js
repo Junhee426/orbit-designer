@@ -110,7 +110,7 @@ export class OrbitViewer {
     const line=(positions,color,width=1)=>add({polyline:{positions:positions.map(xyz),width,material:C.Color.fromCssColorString(color),arcType:C.ArcType.NONE}});
     for(const o of observers)add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}});
     if(snapshot.best)line([snapshot.observer,snapshot.best.position],'#ffb55d',2);
-    if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:o.group;if(seen.has(key))continue;seen.add(key);
+    if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:`${o.group}:${o.raan}:${o.inclination}`;if(seen.has(key))continue;seen.add(key);
       if(o.satrec){line(groundTrack(o,snapshot.minutes),'#344f6a',orbitWidth);continue;}
       const positions=Array.from({length:65},(_,i)=>orbitState(o,snapshot.minutes*60,2*Math.PI*i/64).position);line(positions,'#344f6a',orbitWidth);
     }}

@@ -120,6 +120,7 @@ function draw(){
     const edges=scenario.display.isl?islEdges(states):[],cells=[];
     if(scenario.display.heatmap)for(const code of scenario.selection.country_codes){const country=catalog.countries.find(c=>c.code===code),feature=boundaries.features.find(f=>[f.properties.code,f.properties.ADM0_A3,f.properties.ISO_A3,f.properties.adm0_a3].includes(code));cells.push(...coverageGrid(states,country,cfg.commElevation,feature?.geometry));}
     viewer.update(current,orbits,scenario,observers,selected,edges,cells,domain==='commNav');$('time').value=seconds;text('time-label','T + '+hms(seconds));
+    renderLegend();
     text('route-result','현재 시각의 경로를 계산하세요. 전파지연만 포함하며 Multi-shell은 층 내부 연결입니다.');
   }catch(e){pause();error(e.message);}
 }
@@ -137,7 +138,28 @@ function applyMeta(){
 function applyDomainText(){
   text('analysis-empty-note',domain==='commNav'?'도시별 가시율과 통신 목표 충족률을 먼저 확인하고, 항법 성능 확장에서 정확도와 동시 충족률을 함께 비교할 수 있습니다.':'도시별 가시율과 통신 목표 충족률을 확인하세요.');
   text('station-table-note',domain==='commNav'?'선택한 전체 관측지와 분석기간 기준 · 항법 지표도 표에 포함':'선택한 전체 관측지와 분석기간 기준');
-  text('map-note',(domain==='commNav'?'청록: 통신 LEO · 주황: 통신 접속 · 흰색: 선택 위성. 지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다. GNSS·지역항법 위성과 궤도, 항법 신호를 겸용하는 위성도 함께 표시합니다.':'청록: 통신 LEO · 주황: 통신 접속 · 흰색: 선택 위성. 지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다.')+' 격자는 국가별 사각 분석 범위(해역 포함)이며 도시 가시율과 구분합니다.');
+  text('map-note','지구 표시는 이미지와 윤곽선 전용 보기로 전환할 수 있습니다. 격자는 국가별 사각 분석 범위(해역 포함)이며 도시 가시율과 구분합니다.');
+}
+function legendItem(shapeOrLine,color,label){
+  const mark=document.createElement('span');mark.className='mark '+(shapeOrLine==='line'?'line':shapeOrLine);mark.style.background=color;
+  const item=document.createElement('span');item.className='swatch';item.append(mark,document.createTextNode(label));
+  return item;
+}
+function renderLegend(){
+  const shape=scenario.display.satShape,nav=domain==='commNav';
+  const items=[
+    legendItem(shape,'#53657a','통신 위성'),
+    legendItem(shape,'#74b6ff','통신 연결'),
+    legendItem(shape,'#ffb55d','최선 접속'),
+    legendItem(shape,'#ffffff','선택 위성'),
+  ];
+  if(nav){
+    items.push(legendItem(shape,'#47dacb','항법 겸용 LEO'),legendItem(shape,'#e3ad65','GNSS'),legendItem(shape,'#b4a0ff','지역항법'));
+  }
+  if(scenario.display.isl)items.push(legendItem('line','#36685f','ISL'));
+  if(scenario.display.heatmap)items.push(legendItem('square','hsl(172,70%,55%)','가시 위성 많음'),legendItem('square','#c45259','가시 위성 없음'));
+  if(scenario.display.footprint){items.push(legendItem('line','#84e5df','풋프린트'),legendItem('line','#e8db91','지상 궤적'));}
+  $('globe-legend').replaceChildren(...items);
 }
 function setView(next){
   if(!viewMeta[next])return;view=next;document.body.dataset.workspace=next;

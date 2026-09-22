@@ -1,7 +1,7 @@
 import { EARTH_RADIUS, observerFrame, orbitState } from './engine.js';
 import { footprint, groundTrack } from './geometry.js';
 const NS = 'http://www.w3.org/2000/svg';
-const COLORS = { LEO: '#48d4f0', GNSS: '#f6b75b', REGIONAL: '#c1a0ff' };
+const COLORS = { LEO: '#48d4f0', GNSS: '#e3ad65', REGIONAL: '#b4a0ff' };
 const TWO_PI = Math.PI * 2;
 const wrapLongitude = lon => ((lon + 180) % 360 + 360) % 360 - 180;
 function node(tag, attributes = {}, text) {
@@ -39,8 +39,8 @@ export class Globe {
         this.mapCenter.lon=wrapLongitude(this.mapCenter.lon-dx*360/(Math.max(1,width-36)*this.zoomLevel));
         this.mapCenter.lat=Math.max(-90,Math.min(90,this.mapCenter.lat+dy*180/(Math.max(1,height-60)*this.zoomLevel)));
       }else{
-        this.lon=wrapLongitude(this.lon-dx*.35);
-        this.lat=Math.max(-80,Math.min(80,this.lat+dy*.3));
+        this.lon=wrapLongitude(this.lon-dx*.35/this.zoomLevel);
+        this.lat=Math.max(-80,Math.min(80,this.lat+dy*.3/this.zoomLevel));
       }
       drag = [e.clientX, e.clientY]; this.cached = null;
       if (raf === null) raf = requestAnimationFrame(() => { raf = null; this.draw(); });
@@ -197,7 +197,7 @@ export class Globe {
         stroke([this.snapshot.observer,sat.position],'rgba(72,212,240,.45)',1);
       }
       if (this.snapshot.best) {
-        stroke([this.snapshot.observer,this.snapshot.best.position],'#f6b75b',2);
+        stroke([this.snapshot.observer,this.snapshot.best.position],'#ffb55d',2);
       }
     }
     if (this.showIsl && this.edges.length) {
@@ -211,8 +211,8 @@ export class Globe {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
       const selected = sat.id === this.selectedId, chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
-      ctx.globalAlpha = map ? 1 : q.z < 0 ? .4 : sat.group === 'LEO' && !navUsed ? .55 : 1;
-      ctx.fillStyle = selected ? '#ffffff' : chosen ? '#f6b75b' : COLORS[sat.group];
+      ctx.globalAlpha = map ? 1 : q.z < 0 ? .4 : this.full && sat.group === 'LEO' && !navUsed ? .55 : 1;
+      ctx.fillStyle = selected ? '#ffffff' : chosen ? '#ffb55d' : sat.group === 'LEO' ? (navUsed ? '#47dacb' : sat.link ? '#74b6ff' : '#53657a') : COLORS[sat.group];
       const r = (selected || chosen ? 4.8 : navUsed ? 3.2 : 1.8) * this.satSize;
       ctx.beginPath();
       if (this.satShape === 'square') ctx.rect(q.x - r, q.y - r, r * 2, r * 2);
