@@ -1,11 +1,21 @@
 import {EARTH_RADIUS,C,observerFrame,observe,orbitState} from './engine.js';
 const norm=v=>Math.hypot(...v),subtract=(a,b)=>a.map((x,i)=>x-b[i]),dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
 export function clearsEarth(a,b) {const d=subtract(b,a),den=dot(d,d);if(!den)return false;const t=Math.max(0,Math.min(1,-dot(a,d)/den));return norm(a.map((x,i)=>x+t*d[i]))>EARTH_RADIUS;}
+// The k nearest satellites to s, nearest first; ties keep list order like a stable sort.
+// A single pass instead of sorting all N per satellite (which recomputed distances in the comparator).
+function nearest(s,list,k) {
+  const [x,y,z]=s.position,best=[],dist=[];
+  for(const b of list){if(b===s)continue;const d=Math.hypot(b.position[0]-x,b.position[1]-y,b.position[2]-z);
+    if(best.length===k&&d>=dist[k-1])continue;
+    let i=Math.min(best.length,k-1);while(i>0&&dist[i-1]>d){best[i]=best[i-1];dist[i]=dist[i-1];i--;}
+    best[i]=b;dist[i]=d;}
+  return best;
+}
 export function islEdges(states) {
   const leo=states.filter(s=>s.group==='LEO'),byKey=new Map(leo.map(s=>[`${s.shell}:${s.plane}:${s.slot}`,s])),edges=[],used=new Set();
   for(const s of leo) {
     // TLE: a limited nearest-LOS illustrative graph, not operational links.
-    const candidates=s.plane<0?leo.filter(b=>b!==s).sort((a,b)=>norm(subtract(a.position,s.position))-norm(subtract(b.position,s.position))).slice(0,4):
+    const candidates=s.plane<0?nearest(s,leo,4):
       [byKey.get(`${s.shell}:${s.plane}:${(s.slot+1)%s.slots}`),byKey.get(`${s.shell}:${(s.plane+1)%s.planes}:${s.slot}`)];
     for(const b of candidates)if(b&&b!==s){const key=[s.id,b.id].sort().join('|');if(used.has(key))continue;used.add(key);if(clearsEarth(s.position,b.position))edges.push({a:s.id,b:b.id,rangeKm:norm(subtract(s.position,b.position))});}
   }
@@ -35,15 +45,32 @@ export function footprint(position,elevation) {
 }
 function insideRing(lon,lat,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x,y]=ring[i],[u,v]=ring[j];if((y>lat)!==(v>lat)&&lon<(u-x)*(lat-y)/(v-y)+x)inside=!inside;}return inside;}
 export function insideGeometry(lon,lat,geometry){const polygons=geometry.type==='Polygon'?[geometry.coordinates]:geometry.type==='MultiPolygon'?geometry.coordinates:[];return polygons.some(rings=>insideRing(lon,lat,rings[0])&&!rings.slice(1).some(r=>insideRing(lon,lat,r)));}
-export function coverageGrid(states,country,elevation,geometry,points=16) {
-  const [west,south,east,north]=country.bbox,leo=states.filter(s=>s.group==='LEO'),cells=[];
+// Cell bounds, land mask and observer frames depend only on the country and grid size,
+// so they are built once instead of on every time step.
+const gridCache=new WeakMap();
+function gridCells(country,geometry,points) {
+  const cached=gridCache.get(country);
+  if(cached?.geometry===geometry&&cached.points===points&&cached.bbox===country.bbox)return cached.cells;
+  const [west,south,east,north]=country.bbox,cells=[];
   for(let y=0;y<points;y++)for(let x=0;x<points;x++){
     const lon=west+(x+.5)*(east-west)/points,lat=south+(y+.5)*(north-south)/points;
     if(geometry&&!insideGeometry(lon,lat,geometry))continue;
-    const frame=observerFrame(lat,lon);let count=0;const threshold=Math.sin(elevation*Math.PI/180);
-    for(const s of leo){const v=subtract(s.position,frame.position);if(dot(v,frame.up)/norm(v)>=threshold)count++;}
-    cells.push({west:west+x*(east-west)/points,east:west+(x+1)*(east-west)/points,south:south+y*(north-south)/points,north:south+(y+1)*(north-south)/points,count});
-  }return cells;
+    const {position,up}=observerFrame(lat,lon);
+    cells.push({west:west+x*(east-west)/points,east:west+(x+1)*(east-west)/points,south:south+y*(north-south)/points,north:south+(y+1)*(north-south)/points,position,up});
+  }
+  gridCache.set(country,{geometry,points,bbox:country.bbox,cells});
+  return cells;
+}
+export function coverageGrid(states,country,elevation,geometry,points=16) {
+  const leo=states.filter(s=>s.group==='LEO'),threshold=Math.sin(elevation*Math.PI/180);
+  return gridCells(country,geometry,points).map(({west,east,south,north,position:[px,py,pz],up:[ux,uy,uz]})=>{
+    let count=0;
+    for(const s of leo){const dx=s.position[0]-px,dy=s.position[1]-py,dz=s.position[2]-pz,along=dx*ux+dy*uy+dz*uz;
+      // Below the local horizon can never meet a non-negative mask; skip the square root.
+      if(along<0&&threshold>=0)continue;
+      if(along/Math.hypot(dx,dy,dz)>=threshold)count++;}
+    return {west,east,south,north,count};
+  });
 }
 export function groundTrack(orbit,minutes) {
   const period=orbit.satrec?2*Math.PI/orbit.satrec.no:2*Math.PI*Math.sqrt(orbit.radius**3/398600.4418)/60;

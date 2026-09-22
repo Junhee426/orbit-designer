@@ -1,4 +1,4 @@
-import {buildConstellations,statesAt,geometryAt,evaluateSnapshot,compactSample,quantile} from './engine.js';
+import {buildConstellations,statesAt,sampleAt,observerFrame,quantile} from './engine.js';
 import {sampleTimes,observersFor,validateScenario,metadata} from './scenario.js';
 
 export function sortTradeCandidates(candidates,domain) {
@@ -31,11 +31,14 @@ export function intervalSummary(samples,config) {
 export async function analyze(input,catalog,progress=()=>{}) {
   const scenario=validateScenario(input,catalog),cfg=scenario.configuration;
   const observers=observersFor(scenario,catalog),orbits=buildConstellations(cfg),times=sampleTimes(scenario.analysis.duration_min,scenario.analysis.step_sec);
-  const rows=observers.map(observer=>({observer,samples:[]}));
+  const rows=observers.map(observer=>({observer,samples:[]})),frames=observers.map(o=>observerFrame(o.lat,o.lon));
+  // Yield by elapsed time, not sample count: each setTimeout costs a clamped timer tick (≥4 ms in
+  // browsers), which used to exceed the computation itself for small constellations.
+  let yielded=performance.now();
   for(let i=0;i<times.length;i++) {
     const minutes=times[i]/60,states=statesAt(orbits,minutes);
-    for(const row of rows) row.samples.push(compactSample(evaluateSnapshot(cfg,geometryAt(states,row.observer,minutes))));
-    if(i%8===0) {progress(Math.round(i/times.length*100));await new Promise(r=>setTimeout(r,0));}
+    rows.forEach((row,k)=>row.samples.push(sampleAt(cfg,states,row.observer,minutes,frames[k])));
+    if(i===0||performance.now()-yielded>=100) {progress(Math.round(i/times.length*100));await new Promise(r=>setTimeout(r,0));yielded=performance.now();}
   }
   for(const row of rows) row.summary=intervalSummary(row.samples,cfg);
   return {scenario,observers:rows,metadata:await metadata(scenario),totalSatellites:orbits.filter(o=>o.group==='LEO').length};

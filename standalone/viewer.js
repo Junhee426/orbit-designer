@@ -24,6 +24,11 @@ export class OrbitViewer {
       this.viewer.scene.globe.baseColor=C.Color.fromCssColorString('#12304a');
       this.viewer.scene.backgroundColor=C.Color.fromCssColorString('#081322');
       this.viewer.scene.globe.enableLighting=false;
+      // Satellites and lines change on every time step. Primitive collections update them in place;
+      // entities rebuilt their geometry (asynchronously, in workers) on each draw.
+      this.lines=this.viewer.scene.primitives.add(new C.PolylineCollection());
+      this.billboards=this.viewer.scene.primitives.add(new C.BillboardCollection());
+      this.colors=new Map();this.pointShape=null;this.observerKey='';this.observerEntities=[];
       C.SingleTileImageryProvider.fromUrl(new URL('./earth.jpg',import.meta.url).href).then(p=>{this.imageryLayer=this.viewer.imageryLayers.addImageryProvider(p);this.applyEarthStyle(this.earthStyle,true);}).catch(()=>{});
       this.viewer.screenSpaceEventHandler.setInputAction(click=>{const p=this.viewer.scene.pick(click.position);if(p?.id?.satId)this.onSelect(p.id.satId);},C.ScreenSpaceEventType.LEFT_CLICK);
       this.center(127,36);
@@ -91,24 +96,36 @@ export class OrbitViewer {
     const C=this.C,v=this.viewer;
     const mode=scenario.display.mode==='2d'?C.SceneMode.SCENE2D:C.SceneMode.SCENE3D;
     if(v.scene.mode!==mode){if(mode===C.SceneMode.SCENE2D)v.scene.morphTo2D(0);else v.scene.morphTo3D(0);}
-    const xyz=p=>new C.Cartesian3(...p.map(x=>x*1000));
+    const xyz=p=>new C.Cartesian3(p[0]*1000,p[1]*1000,p[2]*1000);
+    const color=css=>{let c=this.colors.get(css);if(!c){c=C.Color.fromCssColorString(css);this.colors.set(css,c);}return c;};
     const satSize=scenario.display.satSize??1,orbitWidth=scenario.display.orbitWidth??1;
-    const satImage=this.shapeImages[scenario.display.satShape]||this.shapeImages.circle;
-    v.entities.suspendEvents();
-    const keep=new Set();
-    for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let entity=this.points.get(sat.id);
-      if(!entity){entity=v.entities.add({id:sat.id,billboard:{image:satImage}});entity.satId=sat.id;this.points.set(sat.id,entity);}
-      entity.position=xyz(sat.position);
+    const shape=this.shapeImages[scenario.display.satShape]?scenario.display.satShape:'circle',satImage=this.shapeImages[shape];
+    // A stable image id lets the texture atlas reuse the shape instead of adding a copy per assignment.
+    const reshape=this.pointShape!==shape;this.pointShape=shape;
+    const keep=new Set(),scratch=new C.Cartesian3();
+    for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let b=this.points.get(sat.id);
+      if(!b){b=this.billboards.add({id:{satId:sat.id}});b.setImage(shape,satImage);this.points.set(sat.id,b);}
+      else if(reshape)b.setImage(shape,satImage);
+      b.position=C.Cartesian3.fromElements(sat.position[0]*1000,sat.position[1]*1000,sat.position[2]*1000,scratch);
       const navUsed=showNavigation&&sat.navUsed;
       const px=(sat.id===selectedId?11:navUsed||sat.link?7:3)*satSize;
-      entity.billboard.image=satImage;entity.billboard.width=px;entity.billboard.height=px;
-      entity.billboard.color=C.Color.fromCssColorString(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
+      b.width=px;b.height=px;
+      b.color=color(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
     }
-    for(const [id,e]of this.points)if(!keep.has(id)){v.entities.remove(e);this.points.delete(id);}
+    for(const [id,b]of this.points)if(!keep.has(id)){this.billboards.remove(b);this.points.delete(id);}
+    let used=0;
+    const line=(positions,css,width=1)=>{
+      const p=used<this.lines.length?this.lines.get(used):this.lines.add();used++;
+      p.show=true;p.positions=positions.map(xyz);p.width=width;C.Color.clone(color(css),p.material.uniforms.color);
+    };
+    v.entities.suspendEvents();
     for(const e of this.layers)v.entities.remove(e);this.layers=[];
     const add=x=>{const e=v.entities.add(x);this.layers.push(e);return e;};
-    const line=(positions,color,width=1)=>add({polyline:{positions:positions.map(xyz),width,material:C.Color.fromCssColorString(color),arcType:C.ArcType.NONE}});
-    for(const o of observers)add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}});
+    const observerKey=JSON.stringify(observers.map(o=>[o.name,o.lat,o.lon]));
+    if(observerKey!==this.observerKey){
+      for(const e of this.observerEntities)v.entities.remove(e);this.observerKey=observerKey;
+      this.observerEntities=observers.map(o=>v.entities.add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}}));
+    }
     if(snapshot.best)line([snapshot.observer,snapshot.best.position],'#ffb55d',2);
     if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:`${o.group}:${o.raan}:${o.inclination}`;if(seen.has(key))continue;seen.add(key);
       if(o.satrec){line(groundTrack(o,snapshot.minutes),'#344f6a',orbitWidth);continue;}
@@ -120,6 +137,10 @@ export class OrbitViewer {
     const selected=byId.get(selectedId),orbit=orbits.find(o=>o.id===selectedId);
     if(selected&&scenario.display.footprint){const coords=footprint(selected.position,scenario.configuration.commElevation).flat();if(coords.length)add({polyline:{positions:C.Cartesian3.fromDegreesArray(coords),width:2,material:C.Color.fromCssColorString('#84e5df')}});}
     if(orbit&&selected){line(groundTrack(orbit,snapshot.minutes).map(p=>{const scale=6378.137/Math.hypot(...p);return p.map(v=>v*scale);}),'#e8db91',2);}
+    // Release lines a layer no longer needs (e.g. ISL switched off) instead of keeping them hidden.
+    // Collect first: length/get() compact the collection after each remove().
+    const surplus=[];for(let i=used;i<this.lines.length;i++)surplus.push(this.lines.get(i));
+    for(const p of surplus)this.lines.remove(p);
     v.entities.resumeEvents();v.scene.requestRender();
   }
 }

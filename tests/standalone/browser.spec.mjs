@@ -131,22 +131,20 @@ test('GNSS orbit planes render as distinct Cesium polylines instead of collapsin
   await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
   await page.locator('[data-config="phasing"]').fill('0');await page.locator('[data-config="phasing"]').blur();
   await page.locator('[data-config="planes"]').fill('1');await page.locator('[data-config="planes"]').blur();
+  // Orbit lines live in a PolylineCollection that is updated in place; capture it on its next render.
   await page.evaluate(()=>{
-    window.__added=[];
-    const proto=Cesium.EntityCollection.prototype,original=proto.add;
-    proto.add=function(entity){window.__added.push(entity);return original.call(this,entity);};
+    const proto=Cesium.PolylineCollection.prototype,original=proto.update;
+    proto.update=function(frameState){window.__lines=this;return original.call(this,frameState);};
   });
   await page.locator('#show-heatmap').check();
-  const gnssLines=await page.evaluate(()=>{
-    const orbitColor=Cesium.Color.fromCssColorString('#344f6a');
-    const sameColor=m=>{
-      if(!m)return false;
-      if(typeof m.equals==='function')return m.equals(orbitColor);
-      const c=m.color?.getValue?.(Cesium.JulianDate.now());
-      return !!c?.equals?.(orbitColor);
-    };
-    return window.__added.filter(e=>e.polyline&&sameColor(e.polyline.material)).length;
+  const orbitLines=()=>page.evaluate(()=>{
+    const lines=window.__lines,orbitColor=Cesium.Color.fromCssColorString('#344f6a');let count=0;
+    for(let i=0;i<(lines?.length??0);i++){const p=lines.get(i);if(p.show&&p.material.uniforms.color.equals(orbitColor))count++;}
+    return count;
   });
+  // 1 LEO plane + 6 GNSS planes; collapsed GNSS planes would leave 2.
+  await expect.poll(orbitLines).toBeGreaterThanOrEqual(7);
+  const gnssLines=await orbitLines()-1;
   expect(gnssLines).toBeGreaterThanOrEqual(6);
   await expect(page.locator('#error')).toBeHidden();expect(errors).toEqual([]);
 });

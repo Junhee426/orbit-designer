@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DEFAULT_CONFIG,buildConstellations,orbitState,observerFrame,observe,statesAt,geometryAt,evaluateSnapshot,compactSample,linkBudget,positionAccuracy,parseTLE,validateConfig} from '../../standalone/engine.js';
+import {DEFAULT_CONFIG,buildConstellations,orbitState,observerFrame,observe,statesAt,geometryAt,evaluateSnapshot,compactSample,sampleAt,linkBudget,positionAccuracy,parseTLE,validateConfig} from '../../standalone/engine.js';
 import {intervalSummary,analyze,tradeStudy,sortTradeCandidates} from '../../standalone/analysis.js';
 import {defaultScenario,validateScenario,importScenario,observersFor,sampleTimes,analysisKey} from '../../standalone/scenario.js';
 import {islEdges,routeBetween,footprint,coverageGrid,insideGeometry} from '../../standalone/geometry.js';
@@ -90,4 +90,19 @@ test('ISL routing, horizon footprint and bounded grids use actual geometry',()=>
 test('all observers receive period results and every candidate uses the same period',async()=>{
   const s=defaultScenario();s.analysis={duration_min:10,step_sec:60};const r=await analyze(s,catalog);assert.equal(r.observers.length,3);assert.equal(r.observers[0].samples.length,11);assert.equal(r.metadata.sampling_method,'left_hold_intervals');assert.equal(r.metadata.input_sha256.length,64);
   const trade=await tradeStudy(s,catalog);assert.equal(trade.candidates.length,6);assert.equal(trade.scenario.analysis.duration_min,10);
+});
+test('the analysis fast path equals the full snapshot path, including mask edges and time sharing',()=>{
+  const cases=[{},{regional:true,sharing:'time',navShare:0},{regional:true,sharing:'time',navShare:25,commElevation:0,navElevation:0},{commElevation:90,navElevation:5,payloadPercent:37},
+    {mode:'tle',tleText:reference.tle.text,startUtc:reference.tle.epoch}];
+  for(const overrides of cases){const cfg=validateConfig({...DEFAULT_CONFIG,...overrides}),orbits=buildConstellations(cfg);
+    for(const minutes of [0,17,733])for(const location of [{lat:37.5665,lon:126.978},{lat:-89.9,lon:-179.9},{lat:0,lon:0}]){
+      const states=statesAt(orbits,minutes);
+      assert.deepEqual(sampleAt(cfg,states,location,minutes),compactSample(evaluateSnapshot(cfg,geometryAt(states,location,minutes))));
+    }}
+});
+test('TLE ISL links each satellite to its four nearest neighbours',()=>{
+  const states=Array.from({length:12},(_,i)=>({id:'T'+i,group:'LEO',plane:-1,position:[20000*Math.cos(i/12*2*Math.PI),20000*Math.sin(i/12*2*Math.PI),0]}));
+  const edges=islEdges(states),linked=new Set(edges.map(e=>[e.a,e.b].sort().join('|')));
+  assert.equal(edges.length,24);
+  for(let i=0;i<12;i++)for(const step of [1,2])assert.ok(linked.has(['T'+i,'T'+(i+step)%12].sort().join('|')));
 });
