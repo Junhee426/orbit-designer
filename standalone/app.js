@@ -4,6 +4,7 @@ import {skyPlot,lineChart} from './rendering.js';
 import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
 import {sortTradeCandidates} from './analysis.js';
+import {SAT_COLORS,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,HEATMAP_EMPTY} from './style.js';
 
 const $=id=>document.getElementById(id);
 const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
@@ -21,9 +22,10 @@ function field(container,key,label,type='number',extra={}){
   el.dataset.config=key;el.name=key;if(type==='number'){el.step='any';if(extra.min!==undefined)el.min=extra.min;if(extra.max!==undefined)el.max=extra.max;}
   wrap.append(el);container.append(wrap);return el;
 }
+const FIELD_LABELS={id:'층 ID (영문·숫자)',altitude:'고도 (km)',inclination:'경사각 (°)',planes:'궤도면 수',satellitesPerPlane:'면당 위성 수',phasing:'Walker F',j2:'J2 RAAN 보정',name:'관측지 이름',lat:'위도 (°)',lon:'경도 (°)'};
 const modeInput=field($('orbit-fields'),'mode','궤도 모델','select',{options:[['walker','단일 Walker'],['multi_shell','다층 Walker'],['tle','TLE / SGP4']]});
-for(const [key,label,min,max]of [['altitude','고도 (km)',160,3000],['inclination','경사각 (°)',0,180],['planes','궤도면 수',1,128],['satellitesPerPlane','면당 위성 수',1,256],['phasing','Walker F',0,127]])field($('orbit-fields'),key,label,'number',{min,max});
-field($('orbit-fields'),'j2','J2 RAAN 보정','checkbox');
+for(const [key,min,max]of [['altitude',160,3000],['inclination',0,180],['planes',1,128],['satellitesPerPlane',1,256],['phasing',0,127]])field($('orbit-fields'),key,FIELD_LABELS[key],'number',{min,max});
+field($('orbit-fields'),'j2',FIELD_LABELS.j2,'checkbox');
 for(const [key,label,min,max]of [
   ['commElevation','통신 최소 고도각 (°)',0,90],['rateTarget','통신 목표 (Mbps 이상)',1,1000]
 ])field($('comm-fields'),key,label,'number',{min,max});
@@ -41,7 +43,7 @@ for(const [key,label,min,max]of [
 ])field($('nav-error-fields'),key,label,'number',{min,max});
 for(const c of catalog.countries){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=c.code;input.dataset.country=c.code;label.append(input,document.createTextNode(c.name_ko));$('countries').append(label);}
 
-function rowInput(row,key,value,type='number') {const label=document.createElement('label');label.className='field';label.textContent=({id:'층 ID (영문·숫자)',altitude:'고도 (km)',inclination:'경사각 (°)',planes:'궤도면 수',satellitesPerPlane:'면당 위성 수',phasing:'Walker F',j2:'J2 RAAN 보정',name:'관측지 이름',lat:'위도 (°)',lon:'경도 (°)'})[key]||key;const input=document.createElement('input');input.type=type;input.dataset.key=key;if(type==='checkbox')input.checked=value;else input.value=value;input.step='any';label.append(input);row.append(label);return input;}
+function rowInput(row,key,value,type='number') {const label=document.createElement('label');label.className='field';label.textContent=FIELD_LABELS[key]||key;const input=document.createElement('input');input.type=type;input.dataset.key=key;if(type==='checkbox')input.checked=value;else input.value=value;input.step='any';label.append(input);row.append(label);return input;}
 function addShellRow(shell){const row=document.createElement('div');row.className='shell';const remove=document.createElement('button');remove.type='button';remove.className='remove-row';remove.textContent='삭제';remove.addEventListener('click',()=>{row.remove();applyInputs();});row.append(remove);
   for(const key of ['id','altitude','inclination','planes','satellitesPerPlane','phasing','j2'])rowInput(row,key,shell[key],key==='id'?'text':key==='j2'?'checkbox':'number');$('shells').append(row);
 }
@@ -152,17 +154,17 @@ function legendItem(shapeOrLine,color,label){
 function renderLegend(){
   const shape=scenario.display.satShape,nav=domain==='commNav';
   const items=[
-    legendItem(shape,'#53657a','통신 위성'),
-    legendItem(shape,'#74b6ff','통신 연결'),
-    legendItem(shape,'#ffb55d','최선 접속'),
-    legendItem(shape,'#ffffff','선택 위성'),
+    legendItem(shape,SAT_COLORS.idle,'통신 위성'),
+    legendItem(shape,SAT_COLORS.linked,'통신 연결'),
+    legendItem(shape,SAT_COLORS.best,'최선 접속'),
+    legendItem(shape,SAT_COLORS.selected,'선택 위성'),
   ];
   if(nav){
-    items.push(legendItem(shape,'#47dacb','항법 겸용 LEO'),legendItem(shape,'#e3ad65','GNSS'),legendItem(shape,'#b4a0ff','지역항법'));
+    items.push(legendItem(shape,SAT_COLORS.navUsed,'항법 겸용 LEO'),legendItem(shape,SAT_COLORS.GNSS,'GNSS'),legendItem(shape,SAT_COLORS.REGIONAL,'지역항법'));
   }
-  if(scenario.display.isl)items.push(legendItem('line','#36685f','ISL'));
-  if(scenario.display.heatmap)items.push(legendItem('square','hsl(172,70%,55%)','가시 위성 많음'),legendItem('square','#c45259','가시 위성 없음'));
-  if(scenario.display.footprint){items.push(legendItem('line','#84e5df','풋프린트'),legendItem('line','#e8db91','지상 궤적'));}
+  if(scenario.display.isl)items.push(legendItem('line',ISL_LINE,'ISL'));
+  if(scenario.display.heatmap)items.push(legendItem('square',`hsl(${HEATMAP_HUE},${HEATMAP_SAT}%,${heatmapLightness(12)}%)`,'가시 위성 많음'),legendItem('square',HEATMAP_EMPTY,'가시 위성 없음'));
+  if(scenario.display.footprint){items.push(legendItem('line',FOOTPRINT_LINE,'풋프린트'),legendItem('line',GROUND_TRACK_LINE,'지상 궤적'));}
   $('globe-legend').replaceChildren(...items);
 }
 function setView(next){
