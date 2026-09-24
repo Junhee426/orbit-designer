@@ -1,12 +1,10 @@
 import {Globe} from './rendering.js';
-import {orbitState} from './engine.js';
-import {footprint,groundTrack} from './geometry.js';
+import {footprint,groundTrack,orbitRing,groundTrackSurface} from './geometry.js';
+import {SAT_COLORS,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,satelliteColor,tracePath} from './style.js';
 function shapeImage(shape){
   const size=64,c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d');
   const r=size/2-3,cx=size/2,cy=size/2;ctx.fillStyle='#fff';ctx.beginPath();
-  if(shape==='square')ctx.rect(cx-r,cy-r,r*2,r*2);
-  else if(shape==='diamond'){ctx.moveTo(cx,cy-r);ctx.lineTo(cx+r,cy);ctx.lineTo(cx,cy+r);ctx.lineTo(cx-r,cy);ctx.closePath();}
-  else ctx.arc(cx,cy,r,0,2*Math.PI);
+  tracePath(ctx,shape,cx,cy,r);
   ctx.fill();return c;
 }
 export class OrbitViewer {
@@ -110,7 +108,7 @@ export class OrbitViewer {
       const navUsed=showNavigation&&sat.navUsed;
       const px=(sat.id===selectedId?11:navUsed||sat.link?7:3)*satSize;
       b.width=px;b.height=px;
-      b.color=color(sat.id===selectedId?'#ffffff':sat.id===snapshot.best?.id?'#ffb55d':sat.group==='GNSS'?'#e3ad65':sat.group==='REGIONAL'?'#b4a0ff':navUsed?'#47dacb':sat.link?'#74b6ff':'#53657a');
+      b.color=color(satelliteColor({selected:sat.id===selectedId,chosen:sat.id===snapshot.best?.id,group:sat.group,navUsed,link:sat.link}));
     }
     for(const [id,b]of this.points)if(!keep.has(id)){this.billboards.remove(b);this.points.delete(id);}
     let used=0;
@@ -126,17 +124,17 @@ export class OrbitViewer {
       for(const e of this.observerEntities)v.entities.remove(e);this.observerKey=observerKey;
       this.observerEntities=observers.map(o=>v.entities.add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}}));
     }
-    if(snapshot.best)line([snapshot.observer,snapshot.best.position],'#ffb55d',2);
+    if(snapshot.best)line([snapshot.observer,snapshot.best.position],SAT_COLORS.best,2);
     if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:`${o.group}:${o.raan}:${o.inclination}`;if(seen.has(key))continue;seen.add(key);
-      if(o.satrec){line(groundTrack(o,snapshot.minutes),'#344f6a',orbitWidth);continue;}
-      const positions=Array.from({length:65},(_,i)=>orbitState(o,snapshot.minutes*60,2*Math.PI*i/64).position);line(positions,'#344f6a',orbitWidth);
+      if(o.satrec){line(groundTrack(o,snapshot.minutes),ORBIT_LINE,orbitWidth);continue;}
+      line(orbitRing(o,snapshot.minutes,65),ORBIT_LINE,orbitWidth);
     }}
     const byId=new Map(snapshot.satellites.map(s=>[s.id,s]));
-    if(scenario.display.isl)for(const e of edges)line([byId.get(e.a).position,byId.get(e.b).position],'#36685f');
-    if(scenario.display.heatmap)for(const cell of cells)add({rectangle:{coordinates:C.Rectangle.fromDegrees(cell.west,cell.south,cell.east,cell.north),height:1000,material:(cell.count?C.Color.fromHsl(.48,.7,.3+Math.min(cell.count,12)/40):C.Color.fromCssColorString('#c45259')).withAlpha(.55)}});
+    if(scenario.display.isl)for(const e of edges)line([byId.get(e.a).position,byId.get(e.b).position],ISL_LINE);
+    if(scenario.display.heatmap)for(const cell of cells)add({rectangle:{coordinates:C.Rectangle.fromDegrees(cell.west,cell.south,cell.east,cell.north),height:1000,material:(cell.count?C.Color.fromHsl(HEATMAP_HUE/360,HEATMAP_SAT/100,heatmapLightness(cell.count)/100):C.Color.fromCssColorString(HEATMAP_EMPTY)).withAlpha(.55)}});
     const selected=byId.get(selectedId),orbit=orbits.find(o=>o.id===selectedId);
-    if(selected&&scenario.display.footprint){const coords=footprint(selected.position,scenario.configuration.commElevation).flat();if(coords.length)add({polyline:{positions:C.Cartesian3.fromDegreesArray(coords),width:2,material:C.Color.fromCssColorString('#84e5df')}});}
-    if(orbit&&selected){line(groundTrack(orbit,snapshot.minutes).map(p=>{const scale=6378.137/Math.hypot(...p);return p.map(v=>v*scale);}),'#e8db91',2);}
+    if(selected&&scenario.display.footprint){const coords=footprint(selected.position,scenario.configuration.commElevation).flat();if(coords.length)add({polyline:{positions:C.Cartesian3.fromDegreesArray(coords),width:2,material:C.Color.fromCssColorString(FOOTPRINT_LINE)}});}
+    if(orbit&&selected){line(groundTrackSurface(orbit,snapshot.minutes),GROUND_TRACK_LINE,2);}
     // Release lines a layer no longer needs (e.g. ISL switched off) instead of keeping them hidden.
     // Collect first: length/get() compact the collection after each remove().
     const surplus=[];for(let i=used;i<this.lines.length;i++)surplus.push(this.lines.get(i));
