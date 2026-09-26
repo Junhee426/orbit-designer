@@ -17,7 +17,7 @@ const testExports = [
   'loadServiceCatalog', 'fetchSelectedGeometry', 'runAnalysis', 'setModeUI',
   'initShells', 'addShell', 'shellPayloads', 'snapshotPayload', 'bind',
   'selectNextServiceSatellite', 'sliderChanged',
-  'applySceneMode',
+  'applySceneMode', 'renderFlat',
 ].join(',');
 const code = source.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/, `window.testAPI={${testExports}};\n})();`);
 assert.notEqual(code, source, 'The harness must suppress the real startup call.');
@@ -28,14 +28,14 @@ function setup(controlOverrides = {}) {
   const requests = [];
   let requestImpl = async () => { throw new Error('Unexpected fetch call'); };
   const controls = {
-    mode: 'walker', satRender: 'point', satSize: '1', satModel: 'default',
+    mode: 'walker', satRender: 'point', satSize: '1', satModel: 'default', highlightVisible: 'true',
     earthOn: 'true', earthOpacity: '1', earthSource: 'offline',
     sceneMode: '3d', earthStyle: 'image',
     orbitOn: 'true', islOn: 'true', accessOn: 'true',
     groundTrackOn: 'false', footprintOn: 'false', trackSpan: '220',
     minEl: '20', timeSlider: '0', ...controlOverrides,
   };
-  const checked = new Set(['earthOn', 'orbitOn', 'islOn', 'accessOn'].filter(k => controls[k] !== 'false'));
+  const checked = new Set(['earthOn', 'orbitOn', 'islOn', 'accessOn', 'highlightVisible'].filter(k => controls[k] !== 'false'));
   const element = id => {
     if (!elements.has(id)) {
       elements.set(id, {
@@ -95,6 +95,7 @@ function setup(controlOverrides = {}) {
       WHITE: makeColor('WHITE'), CYAN: makeColor('CYAN'), YELLOW: makeColor('YELLOW'), LIME: makeColor('LIME'),
       fromCssColorString: s => makeColor(s),
     },
+    ColorBlendMode: {REPLACE: 1},
     Cartesian2: class { constructor(x, y) { this.x = x; this.y = y; } },
     Cartesian3: {
       fromElements: (x, y, z) => ({ x, y, z }),
@@ -143,7 +144,7 @@ function setup(controlOverrides = {}) {
     dataSources: { add: async ds => ds, remove() {} },
   };
   const context = vm.createContext({
-    window: {}, document, console, Cesium, AbortController, requestAnimationFrame() {},
+    window: {}, document, console, Cesium, AbortController, devicePixelRatio: 1, requestAnimationFrame() {},
     fetch: (url, options) => { requests.push({ url, options }); return requestImpl(url, options); },
     setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id),
   });
@@ -318,21 +319,34 @@ async function run() {
     const sat = (id, active) => ({ id, name: id, ecef_x_km: 7500, ecef_y_km: 0, ecef_z_km: 0, service_visible: active });
     h.api.reconcileSatellites([sat('A', true), sat('B', false)]);
     const a = h.api.state.satEntities.get('A'), b = h.api.state.satEntities.get('B');
-    assert.ok(a.point.pixelSize > b.point.pixelSize);
-    assert.equal(b.point.color.alpha, .45);
+    const diameter=e=>e.point.pixelSize+2*e.point.outlineWidth;
+    assert.equal(diameter(a),diameter(b));
+    assert.equal(a.point.color.tag,b.point.color.tag);
+    assert.equal(a.point.color.tag,'#74b6ff');
+    assert.equal(a.point.color.alpha,1);assert.equal(b.point.color.alpha,1);
+    assert.ok(a.point.outlineWidth>0);assert.equal(b.point.outlineWidth,0);
     assert.equal(h.element('serviceVisibleCount').textContent, '1 / 2기');
     h.element('satRender').value = 'model';
     h.element('satSize').value = '2';
     h.api.updateSatelliteStyles();
-    assert.ok(a.model.minimumPixelSize > b.model.minimumPixelSize);
+    assert.equal(a.model.minimumPixelSize,b.model.minimumPixelSize);
+    assert.equal(a.model.colorBlendMode,h.Cesium.ColorBlendMode.REPLACE);
+    assert.equal(a.model.color.tag,b.model.color.tag);
+    assert.equal(a.model.color.alpha,1);
     assert.equal(a.model.silhouetteSize, 1.5);
     h.api.state.selectedId = 'B';
     h.api.updateSatelliteStyles();
-    assert.equal(b.point.color.tag, h.Cesium.Color.YELLOW.tag);
+    assert.equal(b.point.color.tag,a.point.color.tag);
+    assert.equal(b.point.outlineColor.tag,h.Cesium.Color.YELLOW.tag);
+    assert.equal(diameter(a),diameter(b));
+    h.element('highlightVisible').checked=false;h.api.updateSatelliteStyles();
+    assert.equal(a.point.outlineWidth,0);assert.equal(a.model.silhouetteSize,0);
+    h.element('highlightVisible').checked=true;
     h.api.state.selectedId = null;
     h.api.reconcileSatellites([sat('A', false), sat('B', true)]);
     assert.equal(h.api.state.satEntities.get('A'), a);
-    assert.ok(b.point.pixelSize > a.point.pixelSize);
+    assert.equal(diameter(a),diameter(b));
+    assert.ok(b.point.outlineWidth>0);
     assert.equal(a.model.silhouetteSize, 0);
     h.api.reconcileSatellites([sat('A', false)]);
     assert.equal(h.element('serviceVisibleCount').textContent, '0 / 1기');
@@ -341,15 +355,15 @@ async function run() {
   }
 
   // 1. Satellite point markers must render through Earth (disableDepthTestDistance:0),
-  //    not force through it (Number.POSITIVE_INFINITY), and carry no outline.
+  //    not force through it (Number.POSITIVE_INFINITY); inactive markers have no outline.
   {
     const h = setup();
     h.api.reconcileSatellites([{ id: 'A', name: 'A', ecef_x_km: 1000, ecef_y_km: 0, ecef_z_km: 0 }]);
     const e = h.api.state.satEntities.get('A');
     assert.equal(e.point.disableDepthTestDistance, 0);
     assert.equal(e.label.disableDepthTestDistance, 0);
-    assert.equal('outlineColor' in e.point, false);
-    assert.equal('outlineWidth' in e.point, false);
+    assert.equal(e.point.outlineWidth,0);
+    assert.equal(e.point.color.alpha,1);
     checks++;
   }
 

@@ -24,6 +24,7 @@ test('satellite markers keep equal size and alpha with optional visible outlines
       await expect.poll(async()=>{const rows=await markers();return rows.length>0&&rows.every(b=>b.width===16&&b.height===16&&b.alpha===1&&b.image.startsWith(shape+':'));}).toBe(true);
       await expect.poll(async()=>(await markers()).filter(b=>b.image.endsWith(':outline')).length).toBeGreaterThan(0);
       expect((await markers()).some(b=>b.image.endsWith(':plain'))).toBe(true);
+      expect(new Set((await markers()).map(b=>b.image.split(':')[1]))).toEqual(new Set(['#74b6ff']));
       await page.locator('#highlight-visible').uncheck();
       await expect.poll(async()=>(await markers()).every(b=>b.image.endsWith(':plain'))).toBe(true);
       await page.locator('#highlight-visible').check();
@@ -38,7 +39,7 @@ test('satellite markers keep equal size and alpha with optional visible outlines
   });
   await expect.poll(async()=>(await markers()).filter(b=>b.image.endsWith(':outline')).map(b=>b.id).sort()).toEqual(expected);
   await page.locator('#satellite').selectOption({index:1});
-  expect((await markers()).every(b=>b.width===16&&b.height===16&&b.alpha===1)).toBe(true);
+  expect((await markers()).every(b=>b.width===16&&b.height===16&&b.alpha===1&&b.image.split(':')[1]==='#74b6ff')).toBe(true);
   for(const mode of ['2d-map','2d-globe']){
     await page.locator('#map-mode').selectOption(mode);
     const canvas=page.locator('#globe > canvas');
@@ -222,8 +223,8 @@ test('comm-only domain hides nav UI and narrows tables; satellite style controls
 test('globe legend reflects domain, satellite shape and active layers',async({page})=>{
   await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
   const labels=async()=>page.locator('#globe-legend .swatch').allTextContents();
-  await expect.poll(labels).toContain('GNSS');
-  expect(await labels()).toContain('지역항법');
+  await expect.poll(labels).toContain('모든 위성');
+  expect(await labels()).toContain('가시 위성 테두리');
   expect(await labels()).not.toContain('ISL');
   await expect(page.locator('#globe-legend .mark').first()).toHaveClass(/circle/);
   await page.locator('#sat-shape').selectOption('square');
@@ -234,7 +235,7 @@ test('globe legend reflects domain, satellite shape and active layers',async({pa
   await expect.poll(labels).toContain('가시 위성 많음');
   await page.locator('button[data-domain="comm"]').click();
   const commLabels=await labels();
-  expect(commLabels).not.toContain('GNSS');expect(commLabels).not.toContain('지역항법');expect(commLabels).not.toContain('항법 겸용 LEO');
+  expect(commLabels).toContain('모든 위성');expect(commLabels).toContain('가시 위성 테두리');
 });
 test('mobile layout runs with locally served assets',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');await page.locator('#toggle-settings').click();await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('5');await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');

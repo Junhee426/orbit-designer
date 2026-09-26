@@ -12,6 +12,7 @@
     broadband: '/static/kleo_satellite_broadband.glb',
     flatpanel: '/static/kleo_satellite_flatpanel.glb'
   };
+  const SATELLITE_FILL = '#74b6ff', VISIBLE_OUTLINE = '#eaff83';
   const SHELL_COLORS = ['#5db8ff', '#ff9f43', '#a78bfa', '#64d6a2', '#ff6b8a', '#ffd166'];
 
   function shellColor(id, alpha = 1) {
@@ -752,10 +753,7 @@ function renderFlat(){
   if(!['2d-globe','2d-map'].includes(state.viewMode))return;const canvas=$('flatCanvas'),{ctx,w,h,dpr}=flatCanvasSize(canvas);if(!w||!h)return;
   ctx.clearRect(0,0,w,h);
   const zoom=state.flatCamera.zoom,radius=Math.min(w*.4,h*.43)*zoom,cx=w/2,cy=h*.46,d=Math.PI/180,map=state.viewMode==='2d-map';
-  const sats=state.snapshot?.satellites||[],alts=sats.map(s=>+s.altitude_km).filter(Number.isFinite);
   const viz=state.snapshot?.visualization||{};
-  const altMin=alts.length?Math.min(...alts):null,altMax=alts.length?Math.max(...alts):null;
-  const altSize=alt=>{if(alt==null||!Number.isFinite(+alt))return 2.6;if(altMax==null||altMax<=altMin)return 3.4;return 2.4+3.2*((+alt-altMin)/(altMax-altMin))};
   const project=(lat,lon,altKm)=>{
     if(map)return{x:w/2+lon/360*(w-36)*zoom,y:h/2-10-lat/180*(h-60)*zoom,front:true};
     const a=lat*d,b=(lon-state.flatCamera.lon)*d,c=state.flatCamera.lat*d;
@@ -803,9 +801,10 @@ function renderFlat(){
     if(s.lat_deg==null||s.lon_deg==null||!Number.isFinite(+s.lat_deg)||!Number.isFinite(+s.lon_deg))continue;
     const p=project(s.lat_deg,s.lon_deg,s.altitude_km);if(!p.front)continue;
     if($('serviceOnly').checked&&!s.service_visible&&s.id!==state.selectedId)continue;
-    const selected=s.id===state.selectedId,color=selected?'#ffe26a':s.service_visible?'#48d4f0':shellColorCss(s.shell_id),r=altSize(s.altitude_km);
-    ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,selected?r+2.4:r,0,Math.PI*2);ctx.fill();
-    if(selected){ctx.strokeStyle='#ffe26aaa';ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,r+7,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#f7f2d8';ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(`${s.name} · ${num(s.altitude_km,0,' km')}`,Math.min(p.x+13,w-140),p.y-10);}
+    const selected=s.id===state.selectedId,r=4*satVisualSize(),outlined=$('highlightVisible').checked&&s.service_visible;
+    ctx.save();ctx.globalAlpha=1;ctx.fillStyle=SATELLITE_FILL;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
+    if(outlined||selected){ctx.clip();ctx.strokeStyle=selected?'#ffe26a':VISIBLE_OUTLINE;ctx.lineWidth=r*.75;ctx.stroke();}ctx.restore();
+    if(selected){ctx.fillStyle='#f7f2d8';ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(`${s.name} · ${num(s.altitude_km,0,' km')}`,Math.min(p.x+13,w-140),p.y-10);}
     state.flatHitPoints.push({x:p.x,y:p.y,id:s.id});
   }
   if($('accessOn').checked)for(const l of (viz.access_links||[])){
@@ -816,11 +815,7 @@ function renderFlat(){
   for(const st of stations()){const p=project(st.lat_deg,st.lon_deg);if(!p.front)continue;ctx.strokeStyle='#d3dbe9';ctx.fillStyle='#e8f4ff';ctx.lineWidth=1.5;ctx.strokeRect(p.x-4,p.y-4,8,8);ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(st.name,Math.min(p.x+10,w-65),p.y+14);}
   ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillStyle='#829bb5';ctx.fillText(state.snapshot?fmtTime(state.snapshot.time_sec):'',8,16);
   if(!map){ctx.textAlign='right';ctx.fillText(`중심 ${state.flatCamera.lat.toFixed(0)}°, ${state.flatCamera.lon.toFixed(0)}°`,w-8,16);}
-  if(altMax!=null&&altMax>altMin){
-    const lx=w-92,ly=h-16;ctx.font='10px system-ui';ctx.fillStyle='#9fb4c8';ctx.textAlign='left';ctx.fillText('고도',lx-24,ly+4);
-    [altMin,(altMin+altMax)/2,altMax].forEach((a,i)=>{const x=lx+i*26,r=altSize(a);ctx.beginPath();ctx.fillStyle='#8fa9c4';ctx.arc(x,ly,r,0,Math.PI*2);ctx.fill();});
-    ctx.fillStyle='#9fb4c8';ctx.font='9px system-ui';ctx.textAlign='center';ctx.fillText(Math.round(altMin)+'',lx,ly+14);ctx.fillText(Math.round(altMax)+' km',lx+52,ly+14);
-  }
+
 }
 function setViewMode(mode){
   if(!['3d','2d','2d-globe','2d-map'].includes(mode))return;
@@ -829,7 +824,7 @@ function setViewMode(mode){
   $('cesiumContainer').hidden=flat;$('flatCanvas').hidden=!flat;$('flatLegend').hidden=!flat;$('flatModeNote').hidden=!flat;
   $('viewerError').style.display=flat?'none':(state.cesiumFailed?'flex':'');
   for(const id of ['globalView','serviceView','selectedView'])$(id).style.display=flat?'none':'';
-  if(flat){$('flatLegendTitle').textContent=mode==='2d-map'?'2D 평면도':'2D 지구본';$('flatLegendSub').textContent=mode==='2d-map'?'점 크기 = 고도 · 위성 클릭으로 선택':'드래그로 회전 · 표면과의 거리·점 크기 = 고도 · 위성 클릭으로 선택';renderFlat();}
+  if(flat){$('flatLegendTitle').textContent=mode==='2d-map'?'2D 평면도':'2D 지구본';$('flatLegendSub').textContent=mode==='2d-map'?'동일 크기·단색 위성 · 위성 클릭으로 선택':'드래그로 회전 · 표면과의 거리 = 고도 · 위성 클릭으로 선택';renderFlat();}
   else{state.viewer?.resize?.();state.viewer?.scene.requestRender();}
 }
 function bindFlatView(){
@@ -1011,6 +1006,7 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
   }
 
   function updateSatelliteStyles() {
+    $('visibleOutlineLegend').hidden=!$('highlightVisible').checked;
     renderFlat();
     const sz = satVisualSize(),
       model = !isMap2D() && $('satRender').value === 'model',
@@ -1035,8 +1031,8 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
       if ([s.ecef_x_km, s.ecef_y_km, s.ecef_z_km].some(v => v === null || !Number.isFinite(+v))) continue;
       seen.add(s.id);
       const pos = Cesium.Cartesian3.fromElements(s.ecef_x_km * 1000, s.ecef_y_km * 1000, s.ecef_z_km * 1000),
-        base = s.shell_id ? shellColor(s.shell_id) : Cesium.Color.WHITE,
-        pointBase = s.shell_id ? shellColor(s.shell_id) : Cesium.Color.CYAN;
+        base = Cesium.Color.fromCssColorString(SATELLITE_FILL).withAlpha(1),
+        pointBase = base;
       let e = state.satEntities.get(s.id);
       if (!e) {
         e = state.viewer.entities.add({
@@ -1048,6 +1044,7 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
             maximumScale: 2500000,
             scale: 1,
             color: base,
+            colorBlendMode: Cesium.ColorBlendMode.REPLACE,
             silhouetteColor: Cesium.Color.YELLOW,
             silhouetteSize: 0
           },
@@ -1092,16 +1089,18 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
 
   function highlightSelection() {
     const sz = satVisualSize();
-    const muted = Cesium.Color.fromCssColorString('#697586').withAlpha(.45);
+    const fill=Cesium.Color.fromCssColorString(SATELLITE_FILL).withAlpha(1);
     for (const [id, e] of state.satEntities) {
-      const sel = id === state.selectedId;
-      const active = e._kleoServiceVisible;
-      e.model.minimumPixelSize = (sel ? 11 : active ? 9 : 5) * sz;
-      e.point.pixelSize = (sel ? 8 : active ? 6 : 3) * sz;
-      e.model.silhouetteColor = sel ? Cesium.Color.YELLOW : Cesium.Color.CYAN;
-      e.model.silhouetteSize = sel ? 2.5 : active ? 1.5 : 0;
-      e.model.color = sel ? Cesium.Color.fromCssColorString('#ffe26a') : active ? (e._kleoBaseColor || Cesium.Color.WHITE) : muted;
-      e.point.color = sel ? Cesium.Color.YELLOW : active ? (e._kleoPointColor || Cesium.Color.CYAN) : muted
+      const sel=id===state.selectedId,active=$('highlightVisible').checked&&e._kleoServiceVisible;
+      const outlineWidth=(sel||active)?1.5*sz:0;
+      e.model.minimumPixelSize=9*sz;
+      e.model.silhouetteColor=sel?Cesium.Color.YELLOW:Cesium.Color.fromCssColorString(VISIBLE_OUTLINE);
+      e.model.silhouetteSize=sel?2.5:active?1.5:0;
+      e.model.color=fill;e.model.colorBlendMode=Cesium.ColorBlendMode.REPLACE;
+      // Cesium includes both outline sides in the rendered point diameter.
+      e.point.pixelSize=8*sz-2*outlineWidth;e.point.outlineWidth=outlineWidth;
+      e.point.outlineColor=sel?Cesium.Color.YELLOW:Cesium.Color.fromCssColorString(VISIBLE_OUTLINE);
+      e.point.color=fill;
     }
     updatePointOcclusion()
   }
@@ -1789,6 +1788,8 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     $('satSize').addEventListener('input', updateSatelliteStyles);
     $('satRender').addEventListener('change', updateSatelliteStyles);
     $('serviceOnly').addEventListener('change', updateSatelliteStyles);
+    try{$('highlightVisible').checked=localStorage.getItem('kleo.visibleOutline')!=='false';}catch{}
+    $('highlightVisible').addEventListener('change',()=>{try{localStorage.setItem('kleo.visibleOutline',String($('highlightVisible').checked));}catch{}updateSatelliteStyles();});
     $('nextServiceSatellite').addEventListener('click', selectNextServiceSatellite);
     $('satModel').addEventListener('change', updateSatelliteStyles);
     for (const id of ['orbitOn', 'islOn', 'accessOn', 'coverageOn']) $(id).addEventListener('change', refetchLayers);

@@ -9,7 +9,8 @@
     "build:render": "npm run build && npm run verify:static && npm test",
     "start": "node scripts/serve-standalone.mjs",
     "test": "node --test tests/standalone/*.test.mjs",
-    "test:browser": "playwright test --config tests/standalone/playwright.config.mjs"
+    "test:browser": "playwright test --config tests/standalone/playwright.config.mjs",
+    "test:render-ui": "playwright test --config tests/render-site.config.mjs"
   },
   "engines": { "node": ">=24 <25" },
   "dependencies": { "cesium": "1.144.0", "satellite.js": "6.0.1" },

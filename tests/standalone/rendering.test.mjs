@@ -4,7 +4,7 @@ import {Globe} from '../../standalone/rendering.js';
 import {OrbitViewer} from '../../standalone/viewer.js';
 import {observerFrame,EARTH_RADIUS} from '../../standalone/engine.js';
 import {defaultScenario} from '../../standalone/scenario.js';
-import {SAT_COLORS,VISIBLE_OUTLINE} from '../../standalone/style.js';
+import {SATELLITE_FILL,VISIBLE_OUTLINE} from '../../standalone/style.js';
 
 function fixture(t){
   const arcs=[],lines=[],fills=[],paints=[],strokes=[],listeners={};let last=null,path=[],primitive=null,textures=0,frames=0;
@@ -40,7 +40,7 @@ test('canvas satellites have equal size and opacity; visible outlines track the 
     {id:'selected',group:'LEO',position:[-7378,0,0]}
   ];
   const snapshot={...f.snapshot,satellites,best:satellites[0]};
-  const markers=()=>f.paints.filter(p=>Object.values(SAT_COLORS).includes(p.color));
+  const markers=()=>f.paints.filter(p=>p.color===SATELLITE_FILL);
   const outlines=()=>f.strokes.filter(s=>s.color===VISIBLE_OUTLINE);
   g.set(snapshot,[],'selected');
   assert.equal(markers().length,4);

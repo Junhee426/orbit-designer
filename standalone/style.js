@@ -4,7 +4,7 @@ export const SAT_COLORS = {
   selected: '#ffffff', best: '#ffb55d', GNSS: '#e3ad65', REGIONAL: '#b4a0ff',
   navUsed: '#47dacb', linked: '#74b6ff', idle: '#53657a',
 };
-export const LEO_MARKER = '#48d4f0'; // categorical "this is LEO" marker (sky plot), not the state cascade below
+export const SATELLITE_FILL = '#74b6ff'; // One opaque fill for every satellite, including selected/best and navigation groups.
 export const SATELLITE_DIAMETER = 8;
 export const VISIBLE_OUTLINE = '#eaff83';
 export function satelliteIsVisible(satellite, showNavigation) {
@@ -29,15 +29,6 @@ export const GROUND_TRACK_LINE = '#e8db91';
 export const HEATMAP_EMPTY = '#c45259';
 export const HEATMAP_HUE = 172, HEATMAP_SAT = 70; // degrees, percent
 
-// The satellite fill color cascade: selected > best link > GNSS/regional > LEO nav/link state.
-// Identical logic in both renderers; kept here once so a color change never drifts between them.
-export function satelliteColor({ selected, chosen, group, navUsed, link }) {
-  if (selected) return SAT_COLORS.selected;
-  if (chosen) return SAT_COLORS.best;
-  if (group === 'GNSS') return SAT_COLORS.GNSS;
-  if (group === 'REGIONAL') return SAT_COLORS.REGIONAL;
-  return navUsed ? SAT_COLORS.navUsed : link ? SAT_COLORS.linked : SAT_COLORS.idle;
-}
 // Lightness percent for a heatmap cell, 30-60% as visible-satellite count rises to 12+.
 export function heatmapLightness(count) {
   return 30 + Math.min(count, 12) / 40 * 100;

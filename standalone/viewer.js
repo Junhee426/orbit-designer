@@ -1,6 +1,6 @@
 import {Globe} from './rendering.js';
 import {footprint,groundTrack,orbitRing,groundTrackSurface} from './geometry.js';
-import {SAT_COLORS,SATELLITE_DIAMETER,satelliteIsVisible,paintSatellite,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,satelliteColor} from './style.js';
+import {SAT_COLORS,SATELLITE_FILL,SATELLITE_DIAMETER,satelliteIsVisible,paintSatellite,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness} from './style.js';
 function shapeImage(shape,fill,outlined){
   const size=64,c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d');
   paintSatellite(ctx,shape,size/2,size/2,size/2-3,fill,outlined);
@@ -102,10 +102,9 @@ export class OrbitViewer {
     for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let b=this.points.get(sat.id);
       if(!b){b=this.billboards.add({id:{satId:sat.id}});this.points.set(sat.id,b);}
       b.position=C.Cartesian3.fromElements(sat.position[0]*1000,sat.position[1]*1000,sat.position[2]*1000,scratch);
-      const navUsed=showNavigation&&sat.navUsed;
       const px=SATELLITE_DIAMETER*satSize;
       b.width=px;b.height=px;
-      const fill=satelliteColor({selected:sat.id===selectedId,chosen:sat.id===snapshot.best?.id,group:sat.group,navUsed,link:sat.link});
+      const fill=SATELLITE_FILL;
       const outlined=(scenario.display.highlightVisible??true)&&satelliteIsVisible(sat,showNavigation);
       const imageKey=`${shape}:${fill}:${outlined?'outline':'plain'}`;
       // Reuse a bounded set of textures for every shape/color/outline combination.

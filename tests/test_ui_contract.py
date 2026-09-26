@@ -75,8 +75,8 @@ def test_service_controls_and_results_belong_to_analysis_workspace():
 def test_v141_satellite_point_markers_are_wired_to_earth_occlusion():
     # The occlusion geometry itself (front-of-Earth visible, behind-Earth
     # hidden, disabled while earthOn is off) is covered by
-    # tests/test_occlusion_js.py, and the point/label config shape (no
-    # outline, disableDepthTestDistance:0) by frontend_ui.cjs. What those
+    # tests/test_occlusion_js.py, and the point/label config (optional
+    # visible outline, disableDepthTestDistance:0) by frontend_ui.cjs. What those
     # don't cover is that the per-frame update loop is actually wired up.
     assert "preRender.addEventListener(updatePointOcclusion)" in JS
 

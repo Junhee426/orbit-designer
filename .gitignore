@@ -15,3 +15,5 @@ node_modules/
 standalone/vendor/
 playwright-report/
 test-results/
+
+test-results-render/

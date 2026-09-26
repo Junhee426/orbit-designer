@@ -20,9 +20,9 @@ body[data-workspace="analysis"] #settingsPanel>section[data-view="analysis"]:nth
 .service-visibility { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px; font-size: 12px; }
 .service-visibility strong { color: #48d4f0; }
 .service-visibility small { flex-basis: 100%; opacity: .7; }
-.service-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #697586; }
-.service-dot.active { width: 9px; height: 9px; background: #48d4f0; box-shadow: 0 0 6px #48d4f080; }
-.service-dot.selected { background: #ffe26a; }
+.service-dot { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; background: #74b6ff; }
+.service-dot.active { border: 2px solid #eaff83; }
+.service-dot.selected { border: 2px solid #ffe26a; }
 .map-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px}
 .map-controls label{display:flex;align-items:center;gap:8px;color:var(--muted)}
 .map-controls select{padding:7px 10px;border:1px solid #3a506b;border-radius:6px;background:#0a1625;color:var(--text);font:inherit}

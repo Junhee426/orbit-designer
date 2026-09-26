@@ -5,7 +5,7 @@ import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
 import {sortTradeCandidates} from './analysis.js';
 import {loadSession,saveSession} from './session.js';
-import {SAT_COLORS,VISIBLE_OUTLINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,HEATMAP_EMPTY} from './style.js';
+import {SATELLITE_FILL,VISIBLE_OUTLINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,HEATMAP_EMPTY} from './style.js';
 
 const $=id=>document.getElementById(id);
 const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
@@ -165,16 +165,8 @@ function legendItem(shapeOrLine,color,label){
   return item;
 }
 function renderLegend(){
-  const shape=scenario.display.satShape,nav=domain==='commNav';
-  const items=[
-    legendItem(shape,SAT_COLORS.idle,'통신 위성'),
-    legendItem(shape,SAT_COLORS.linked,'통신 연결'),
-    legendItem(shape,SAT_COLORS.best,'최선 접속'),
-    legendItem(shape,SAT_COLORS.selected,'선택 위성'),
-  ];
-  if(nav){
-    items.push(legendItem(shape,SAT_COLORS.navUsed,'항법 겸용 LEO'),legendItem(shape,SAT_COLORS.GNSS,'GNSS'),legendItem(shape,SAT_COLORS.REGIONAL,'지역항법'));
-  }
+  const shape=scenario.display.satShape;
+  const items=[legendItem(shape,SATELLITE_FILL,'모든 위성')];
   if(scenario.display.highlightVisible){const item=legendItem(shape,VISIBLE_OUTLINE,'가시 위성 테두리');item.querySelector('.mark').classList.add('outline');items.push(item);}
   if(scenario.display.isl)items.push(legendItem('line',ISL_LINE,'ISL'));
   if(scenario.display.heatmap)items.push(legendItem('square',`hsl(${HEATMAP_HUE},${HEATMAP_SAT}%,${heatmapLightness(12)}%)`,'가시 위성 많음'),legendItem('square',HEATMAP_EMPTY,'가시 위성 없음'));

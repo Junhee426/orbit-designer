@@ -1,6 +1,6 @@
 import { EARTH_RADIUS, observerFrame, geodeticPosition } from './engine.js';
 import { footprint, groundTrack, orbitRing, groundTrackSurface } from './geometry.js';
-import { SAT_COLORS, LEO_MARKER, SATELLITE_DIAMETER, satelliteIsVisible, paintSatellite, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, satelliteColor, withAlpha } from './style.js';
+import { SAT_COLORS, SATELLITE_FILL, SATELLITE_DIAMETER, satelliteIsVisible, paintSatellite, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, withAlpha } from './style.js';
 const NS = 'http://www.w3.org/2000/svg';
 const TWO_PI = Math.PI * 2;
 const wrapLongitude = lon => ((lon + 180) % 360 + 360) % 360 - 180;
@@ -210,8 +210,8 @@ export class Globe {
     for (const sat of this.snapshot.satellites) {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
-      const selected = sat.id === this.selectedId, chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
-      const fill = satelliteColor({selected, chosen, group: sat.group, navUsed, link: sat.link});
+      const chosen = sat.id === this.snapshot.best?.id;
+      const fill = SATELLITE_FILL;
       paintSatellite(ctx, this.satShape, q.x, q.y, SATELLITE_DIAMETER / 2 * this.satSize, fill, this.highlightVisible && satelliteIsVisible(sat, this.full));
       if (chosen) {
         ctx.globalAlpha = 1; ctx.font = '13px system-ui'; ctx.fillStyle = '#ffe0ae';
@@ -245,7 +245,7 @@ export function skyPlot(container, snapshot) {
   const w = 310, cx = 155, cy = 149, r = 117;
   const svg = node('svg', { viewBox: '0 0 310 302', role: 'img', 'aria-label': '관측지에서 보이는 위성의 방위각과 고도각', class: 'sky-svg' });
   svg.append(node('title', {}, '가시 위성 하늘보기'));
-  svg.append(node('desc', {}, '중앙은 천정, 바깥 원은 지평선입니다. LEO는 청록색 원, GNSS는 주황색 사각형, 지역항법 예시는 보라색 마름모입니다.'));
+  svg.append(node('desc', {}, '중앙은 천정, 바깥 원은 지평선입니다. 위성은 모두 같은 파란색입니다. LEO는 원, GNSS는 사각형, 지역항법 예시는 마름모입니다.'));
   for (const elev of [0, 30, 60]) {
     svg.append(node('circle', { cx, cy, r: r * (1 - elev / 90), fill: 'none', stroke: '#2c3d55', 'stroke-width': 1 }));
     if (elev) svg.append(node('text', { x: cx + 4, y: cy - r * (1 - elev / 90) - 5, fill: '#8b9eb8', 'font-size': 12 }, elev + '°'));
@@ -257,9 +257,9 @@ export function skyPlot(container, snapshot) {
     const a = sat.azimuth * Math.PI / 180, rr = r * (1 - sat.elevation / 90);
     const x = cx + rr * Math.sin(a), y = cy - rr * Math.cos(a);
     let mark;
-    if (sat.group === 'GNSS') mark = node('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1, fill: SAT_COLORS.GNSS });
-    else if (sat.group === 'REGIONAL') mark = node('path', { d: `M${x} ${y-5}L${x+5} ${y}L${x} ${y+5}L${x-5} ${y}Z`, fill: SAT_COLORS.REGIONAL });
-    else mark = node('circle', { cx: x, cy: y, r: 4, fill: LEO_MARKER });
+    if (sat.group === 'GNSS') mark = node('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1, fill: SATELLITE_FILL });
+    else if (sat.group === 'REGIONAL') mark = node('path', { d: `M${x} ${y-5}L${x+5} ${y}L${x} ${y+5}L${x-5} ${y}Z`, fill: SATELLITE_FILL });
+    else mark = node('circle', { cx: x, cy: y, r: 4, fill: SATELLITE_FILL });
     mark.append(node('title', {}, sat.id + ' · 고도각 ' + sat.elevation.toFixed(1) + '° · ' + sat.range.toFixed(0) + ' km')); svg.append(mark);
     if (sat.id === snapshot.best?.id) svg.append(node('circle', { cx: x, cy: y, r: 8, fill: 'none', stroke: '#fff', 'stroke-width': 1.5 }));
   }
