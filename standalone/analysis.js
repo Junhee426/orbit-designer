@@ -1,4 +1,5 @@
 import {buildConstellations,statesAt,sampleAt,observerFrame,quantile} from './engine.js';
+import {contactWindows,contactSummary} from './contact-windows.js';
 import {sampleTimes,observersFor,validateScenario,metadata} from './scenario.js';
 
 export function sortTradeCandidates(candidates,domain) {
@@ -40,7 +41,10 @@ export async function analyze(input,catalog,progress=()=>{}) {
     rows.forEach((row,k)=>row.samples.push(sampleAt(cfg,states,row.observer,minutes,frames[k])));
     if(i===0||performance.now()-yielded>=100) {progress(Math.round(i/times.length*100));await new Promise(r=>setTimeout(r,0));yielded=performance.now();}
   }
-  for(const row of rows) row.summary=intervalSummary(row.samples,cfg);
+  for(const row of rows) {
+    row.contactWindows=contactWindows(row.samples);
+    row.summary={...intervalSummary(row.samples,cfg),...contactSummary(row.contactWindows)};
+  }
   return {scenario,observers:rows,metadata:await metadata(scenario),totalSatellites:orbits.filter(o=>o.group==='LEO').length};
 }
 export async function tradeStudy(input,catalog,progress=()=>{}) {

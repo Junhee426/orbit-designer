@@ -4,11 +4,21 @@ import {skyPlot,lineChart} from './rendering.js';
 import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
 import {sortTradeCandidates} from './analysis.js';
+import {loadSession,saveSession} from './session.js';
 
 const $=id=>document.getElementById(id);
 const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
 let scenario=defaultScenario(),orbits=[],observers=[],current=null,seconds=0,selected=null,worker=null,job=0,playing=null,editing=null,result=null,tradeResult=null,view='design',domain='commNav';
 let lastOrbitKey='',lastSatKey='';
+let sessionReady=false,sessionDirty=false,saveTimer=null;
+function persistSession(){
+  clearTimeout(saveTimer);if(!sessionReady||!sessionDirty)return;
+  let valid;
+  try{valid=readForm();}catch{text('save-status','입력 확인 필요 · 마지막 유효 설정 유지');return;}
+  try{saveSession(localStorage,valid,s=>s);sessionDirty=false;text('save-status','이 기기에 자동 저장됨');$('save-status').dataset.state='saved';}
+  catch{text('save-status','자동 저장 불가 · 설정 파일로 저장하세요');$('save-status').dataset.state='error';}
+}
+function scheduleSave(){if(sessionReady){sessionDirty=true;clearTimeout(saveTimer);text('save-status','설정 저장 중…');saveTimer=setTimeout(persistSession,500);}}
 const format=(v,d=2)=>Number.isFinite(v)?v.toLocaleString('ko-KR',{maximumFractionDigits:d}):'—';
 const hms=t=>[Math.floor(t/3600),Math.floor(t/60)%60,Math.floor(t)%60].map(v=>String(v).padStart(2,'0')).join(':');
 const error=message=>{$('error').textContent=message||'';$('error').hidden=!message;};
@@ -72,7 +82,7 @@ function readForm(){const s=structuredClone(scenario);s.name=$('scenario-name').
   s.display.time_sec=Math.min(seconds,s.analysis.duration_min*60);
   return validateScenario(s,catalog);
 }
-function applyInputs(){clearTimeout(editing);try{const next=readForm();scenario=next;refreshConfiguration();error('');return true;}catch(e){error(e.message);return false;}}
+function applyInputs(){clearTimeout(editing);try{const next=readForm();scenario=next;refreshConfiguration();error('');return true;}catch(e){error(e.message);if(sessionReady)text('save-status','입력 확인 필요 · 마지막 유효 설정 유지');return false;}}
 function refreshConfiguration(){
   const orbitKey=JSON.stringify(scenario.configuration);if(orbitKey!==lastOrbitKey){orbits=buildConstellations(scenario.configuration);lastOrbitKey=orbitKey;}
   observers=observersFor(scenario,catalog);$('observer').replaceChildren(...observers.map(o=>option(o.id,o.name)));$('observer').value=scenario.active_observer;
@@ -125,6 +135,8 @@ function draw(){
     if(scenario.display.heatmap)for(const code of scenario.selection.country_codes){const country=catalog.countries.find(c=>c.code===code),feature=boundaries.features.find(f=>[f.properties.code,f.properties.ADM0_A3,f.properties.ISO_A3,f.properties.adm0_a3].includes(code));cells.push(...coverageGrid(states,country,cfg.commElevation,feature?.geometry));}
     viewer.update(current,orbits,scenario,observers,selected,edges,cells,domain==='commNav');$('time').value=seconds;text('time-label','T + '+hms(seconds));
     renderLegend();
+    $('time-back').disabled=seconds<=0;$('time-forward').disabled=seconds>=scenario.analysis.duration_min*60;
+    scheduleSave();
     text('route-result','현재 시각의 경로를 계산하세요. 전파지연만 포함하며 Multi-shell은 층 내부 연결입니다.');
   }catch(e){pause();error(e.message);}
 }
@@ -186,7 +198,7 @@ document.querySelectorAll('button[data-domain]').forEach(b=>b.addEventListener('
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
 $('workspace-action').addEventListener('click',()=>setView($('workspace-action').dataset.go));
 modeInput.addEventListener('change',()=>{if(modeInput.value==='multi_shell'&&!$('shells').children.length)addShellRow({id:'SH1',altitude:1280,inclination:42,planes:8,satellitesPerPlane:16,phasing:1,j2:true});modeFields();});
-$('configuration').addEventListener('input',()=>{clearTimeout(editing);editing=setTimeout(applyInputs,250);});
+$('configuration').addEventListener('input',()=>{if(sessionReady){sessionDirty=true;text('save-status','입력 중 · 마지막 유효 설정 유지');}clearTimeout(editing);editing=setTimeout(applyInputs,250);});
 $('configuration').addEventListener('change',()=>{clearTimeout(editing);applyInputs();});
 $('configuration').addEventListener('submit',e=>{e.preventDefault();if(applyInputs())startJob('analyze');});
 $('apply-orbit').addEventListener('click',()=>{if(applyInputs()){setView('design');text('status','궤도 배치를 적용했습니다. 지도에서 위성을 선택하거나 시간을 이동해 확인하세요.');}});
@@ -196,9 +208,14 @@ $('example-tle').addEventListener('click',async()=>{try{$('tle-text').value=awai
 $('observer').addEventListener('change',()=>{scenario.active_observer=$('observer').value;refreshConfiguration();const o=activeObserver();viewer.center(o.lon,o.lat);});
 $('satellite').addEventListener('change',()=>{selected=$('satellite').value||null;draw();});
 function pause(){clearInterval(playing);playing=null;text('play','재생');$('play').setAttribute('aria-pressed','false');}
-$('play').addEventListener('click',()=>{if(playing){pause();return;}text('play','일시정지');$('play').setAttribute('aria-pressed','true');playing=setInterval(()=>{const end=scenario.analysis.duration_min*60;seconds=seconds>=end?0:Math.min(end,seconds+60);draw();},500);});
+$('play').addEventListener('click',()=>{if(playing){pause();persistSession();return;}if(seconds>=scenario.analysis.duration_min*60)seconds=0;text('play','일시정지');$('play').setAttribute('aria-pressed','true');playing=setInterval(()=>{const end=scenario.analysis.duration_min*60;seconds=Math.min(end,seconds+Number($('play-speed').value)/2);draw();if(seconds>=end)pause();},500);});
+function stepTime(direction){pause();seconds=Math.max(0,Math.min(scenario.analysis.duration_min*60,seconds+direction*scenario.analysis.step_sec));draw();}
+$('time-back').addEventListener('click',()=>stepTime(-1));
+$('time-forward').addEventListener('click',()=>stepTime(1));
+$('time-reset').addEventListener('click',()=>{pause();seconds=0;draw();});
 $('time').addEventListener('input',()=>{pause();seconds=Number($('time').value);requestDraw();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();persistSession();}});
+window.addEventListener('pagehide',persistSession);
 $('recenter').addEventListener('click',()=>{const o=activeObserver();viewer.center(o.lon,o.lat);});
 $('zoom-in').addEventListener('click',()=>viewer.zoom(1.25));
 $('zoom-out').addEventListener('click',()=>viewer.zoom(1/1.25));
@@ -221,8 +238,8 @@ function startJob(type){if(worker)return;pause();error('');const requestId=++job
 }
 $('cancel').addEventListener('click',()=>{job++;finish('계산을 취소했습니다.');});
 $('run-trade').addEventListener('click',()=>{if(applyInputs())startJob('trade');});
-function table(id,headers,rows){const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');for(const h of headers){const th=document.createElement('th');th.scope='col';th.textContent=h;tr.append(th);}head.append(tr);const body=document.createElement('tbody');for(const values of rows){const row=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;row.append(td);}body.append(row);}table.append(head,body);$(id).replaceChildren(table);}
-const summaryColumns=[['geometricAvailability','기하 가시율 (%)'],['commAvailability','통신 충족률 (%)'],['navAvailability','항법 충족률 (%)'],['jointAvailability','동시 충족률 (%)'],['validNavAvailability','측위 유효율 (%)'],['avgVisible','평균 가시 위성'],['maxVisible','최대 가시 위성'],['longestOutageSec','최대 표본 단절 (s)'],['handovers','기하 핸드오버'],['reconnects','재접속'],['handoversPerHour','기하 핸드오버/h'],['commHandovers','통신 위성 전환'],['medianRate','처리량 중앙값 (Mbps)'],['medianHrms','HRMS 중앙값 (m)'],['medianVrms','VRMS 중앙값 (m)'],['medianPdop','PDOP 중앙값'],['medianMargin','링크 마진 중앙값 (dB)'],['medianDelayMs','편도 지연 중앙값 (ms)']];
+function table(id,headers,rows){const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');for(const h of headers){const th=document.createElement('th');th.scope='col';th.textContent=h;tr.append(th);}head.append(tr);const body=document.createElement('tbody');for(const values of rows){const row=document.createElement('tr');for(const value of values){const td=document.createElement('td');if(value instanceof Node)td.append(value);else td.textContent=value;row.append(td);}body.append(row);}table.append(head,body);$(id).replaceChildren(table);}
+const summaryColumns=[['geometricAvailability','기하 가시율 (%)'],['commAvailability','통신 충족률 (%)'],['navAvailability','항법 충족률 (%)'],['jointAvailability','동시 충족률 (%)'],['validNavAvailability','측위 유효율 (%)'],['avgVisible','평균 가시 위성'],['maxVisible','최대 가시 위성'],['longestOutageSec','최대 기하 단절 (s)'],['longestUnavailableSec','최대 통신 목표 미충족 (s)'],['longestConnectedSec','최장 통신 목표 충족 (s)'],['handovers','기하 핸드오버'],['reconnects','재접속'],['handoversPerHour','기하 핸드오버/h'],['commHandovers','통신 위성 전환'],['medianRate','처리량 중앙값 (Mbps)'],['medianHrms','HRMS 중앙값 (m)'],['medianVrms','VRMS 중앙값 (m)'],['medianPdop','PDOP 중앙값'],['medianMargin','링크 마진 중앙값 (dB)'],['medianDelayMs','편도 지연 중앙값 (ms)']];
 const sampleColumns=[['minutes','경과 분'],['commVisible','통신 가시 수'],['geometricBestId','최고 고도각 위성'],['bestId','통신 접속'],['rate','Mbps'],['hrms','HRMS m'],['vrms','VRMS m'],['pdop','PDOP'],['baseline','GNSS HRMS m'],['gnssLEO','GNSS+LEO HRMS m'],['leoVisible','항법 LEO'],['gnssVisible','GNSS'],['regionalVisible','지역항법'],['margin','마진 dB'],['snr','C/N dB'],['cn0','C/N₀ dBHz'],['ebn0','Eb/N₀ dB'],['fspl','FSPL dB'],['delayMs','지연 ms'],['minDelayMs','최소 지연 ms'],['dopplerKHz','도플러 kHz'],['rangeKm','거리 km'],['elevation','고도각 °'],['commPass','통신 충족'],['navPass','항법 충족'],['jointPass','동시 충족']];
 const navSummaryKeys=new Set(['navAvailability','jointAvailability','validNavAvailability','medianHrms','medianVrms','medianPdop']);
 const navSampleKeys=new Set(['hrms','vrms','pdop','baseline','gnssLEO','leoVisible','gnssVisible','regionalVisible','navPass','jointPass']);
@@ -240,13 +257,48 @@ function renderResults(){if(!result)return;const stale=analysisKey(result.scenar
   lineChart($('rate-chart'),points,[{key:'rate',color:'#f6b75b'}],{xMax,threshold:result.scenario.configuration.rateTarget,yLabel:'Mbps'});
   lineChart($('nav-chart'),points,[{key:'baseline',color:'#899cb5'},{key:'hrms',color:'#47dacb'}],{xMax,threshold:result.scenario.configuration.horizontalTarget,yLabel:'HRMS (m)'});
   table('nav-comparison',['구성','HRMS 중앙값 (m)','목표 충족률 (%)'],[['GNSS 단독',format(s.medianBaseline),format(s.baselineAvailability)],['GNSS + LEO',format(s.medianGnssLEO),format(s.gnssLeoAvailability)],['전체 선택 항법망',format(s.medianHrms),format(s.navAvailability)]]);
+  renderContacts();
   const sampleCols=visibleColumns(sampleColumns,navSampleKeys);
   table('sample-table',sampleCols.map(c=>c[1]),row.samples.map(r=>sampleCols.map(([k])=>value(r[k]))));$('export-json').disabled=false;$('export-csv').disabled=false;
 }
+const contactLabels={'connected':'목표 충족','below-target':'목표 미충족','no-visibility':'가시 위성 없음'};
+function selectedResult(){return result?.observers.find(o=>o.observer.id===scenario.active_observer)||result?.observers[0];}
+function contactJump(window,label,stale){
+  const button=document.createElement('button');button.type='button';button.className='button small';button.textContent=label;
+  button.disabled=stale;button.title=stale?'설정이 바뀌었습니다. 다시 분석한 후 이동하세요.':`T + ${hms(window.startSec)} 궤도 배치로 이동`;
+  button.addEventListener('click',()=>{pause();seconds=window.startSec;setView('design');});return button;
+}
+function renderContacts(){
+  const row=selectedResult();if(!row)return;const windows=row.contactWindows,stale=analysisKey(result.scenario)!==analysisKey(scenario);
+  text('contact-note',`${row.observer.name} · 처리량 ≥ ${result.scenario.configuration.rateTarget} Mbps · ${result.scenario.analysis.step_sec}초 간격${stale?' · 이전 설정 결과 (시각 이동 비활성)':''}`);
+  cards('contact-metrics',[
+    ['목표 충족 시간',format(row.summary.connectedSec/60,1),'분','전체 분석 기간 합계'],
+    ['최장 연속 접속',format(row.summary.longestConnectedSec/60,1),'분','통신 목표 충족 기준'],
+    ['최장 목표 미충족',format(row.summary.longestUnavailableSec/60,1),'분','가시 위성 없는 시간 포함']
+  ]);
+  $('contact-timeline').replaceChildren(...windows.map(w=>{const b=contactJump(w,'',stale);b.className='contact-segment '+w.state;b.style.flexGrow=w.durationSec;b.setAttribute('aria-label',`${contactLabels[w.state]} · ${hms(w.startSec)}부터 ${hms(w.endSec)} · ${format(w.durationSec,1)}초`);b.title=b.getAttribute('aria-label')+(stale?' · 이전 설정 결과':' · 클릭하여 이동');return b;}));
+  const filter=$('contact-filter').value,filtered=windows.filter(w=>filter==='all'||(filter==='connected'?w.state==='connected':w.state!=='connected'));
+  table('contact-table',['상태','시작 (T+)','종료 (T+)','지속 (초)','평균 Mbps','최저 Mbps','최저 마진 dB','접속 위성'],filtered.map(w=>[contactLabels[w.state],contactJump(w,hms(w.startSec),stale),hms(w.endSec),format(w.durationSec,1),format(w.meanRate),format(w.minRate),format(w.minMargin),w.satellites.join(', ')||'—']));
+  if(!filtered.length){const empty=document.createElement('p');empty.className='chart-note';empty.textContent='이 조건에 해당하는 구간이 없습니다.';$('contact-table').append(empty);}
+}
+$('contact-filter').addEventListener('change',renderContacts);
+$('export-contacts').addEventListener('click',()=>{
+  const row=selectedResult();if(!row)return;const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';
+  const header=['observer_id','observer_name','state','start_sec','end_sec','duration_sec','mean_rate_mbps','min_rate_mbps','min_margin_db','satellites','scenario_json','metadata_json'];
+  const rows=row.contactWindows.map(w=>[row.observer.id,row.observer.name,w.state,w.startSec,w.endSec,w.durationSec,w.meanRate,w.minRate,w.minMargin,w.satellites.join('|'),JSON.stringify(result.scenario),JSON.stringify(result.metadata)]);
+  download('kleo-contact-windows.csv','\ufeff'+[header,...rows].map(r=>r.map(quote).join(',')).join('\r\n'),'text/csv;charset=utf-8');
+});
+function applyCandidate(candidate){
+  pause();clearTimeout(editing);job++;if(worker)finish('후보 적용으로 분석을 취소했습니다.');
+  const next=structuredClone(tradeResult.scenario);
+  Object.assign(next.configuration,{altitude:candidate.altitude,planes:candidate.planes,satellitesPerPlane:16,phasing:next.configuration.phasing%candidate.planes});
+  next.display={...scenario.display,time_sec:0,selected_satellite:null};
+  try{scenario=validateScenario(next,catalog);seconds=0;selected=null;syncForm();refreshConfiguration();setDomain(scenario.display.domain);setView('design');error('');text('status',`${candidate.altitude.toLocaleString()} km · ${candidate.satellites}기 후보와 비교 당시 분석 조건을 적용했습니다. 상세 분석에서 접속 구간을 확인하세요.`);}catch(e){error(e.message);}
+}
 function renderTrade(){if(!tradeResult)return;$('export-trade').disabled=false;const stale=analysisKey(tradeResult.scenario)!==analysisKey(scenario);$('trade-note').classList.toggle('stale',stale);text('trade-note',`${stale?'이전 설정의 결과 · ':''}${tradeResult.scenario.analysis.duration_min}분 · 모든 관측지 중 최저 충족률 / 최장 단절 · ${domain==='comm'?'통신':'통신·항법 동시'} 충족률 높은 순, 동률이면 위성 수 적은 순 · 비용 최적화가 아닌 성능 비교`);
   const tradeKeys=domain==='commNav'?['geometric','comm','nav','joint','outage']:['geometric','comm','outage'];
-  const tradeHeaders=['고도 km','궤도면','위성 수','기하 가시율 %','통신 %',...(domain==='commNav'?['항법 %','동시 %']:[]),'최장 단절 s'];
-  table('trade-table',tradeHeaders,sortTradeCandidates(tradeResult.candidates,domain).map(c=>[c.altitude,c.planes,c.satellites,...tradeKeys.map(k=>format(c[k]))]));}
+  const tradeHeaders=['고도 km','궤도면','위성 수','기하 가시율 %','통신 %',...(domain==='commNav'?['항법 %','동시 %']:[]),'최장 단절 s','후보 적용'];
+  table('trade-table',tradeHeaders,sortTradeCandidates(tradeResult.candidates,domain).map(c=>{const apply=document.createElement('button');apply.type='button';apply.className='button small';apply.textContent='이 후보 적용';apply.setAttribute('aria-label',`${c.altitude} km ${c.satellites}기 후보 적용`);apply.title='비교 당시 관측지·RF·항법·분석 조건을 함께 적용합니다.';apply.addEventListener('click',()=>applyCandidate(c));return [c.altitude,c.planes,c.satellites,...tradeKeys.map(k=>format(c[k])),apply];}));}
 $('sweep').addEventListener('click',()=>{if(!applyInputs())return;try{const o=activeObserver(),cfg={...scenario.configuration,location:'custom',latitude:o.lat,longitude:o.lon};const axis=$('sweep-axis').value;
   if(cfg.mode!=='walker'&&!['navShare','payloadPercent'].includes(axis))throw Error('궤도 변수 스윕은 단일 Walker 모드에서 실행합니다.');
   const meta={navShare:[40,'항법 시간 (%)'],payloadPercent:[100,'항법 탑재 (%)'],altitude:[2000,'고도 (km)'],inclination:[90,'경사각 (°)'],planes:[32,'궤도면 수'],satellitesPerPlane:[32,'면당 위성 수']}[axis];
@@ -261,7 +313,17 @@ $('export-json').addEventListener('click',()=>{if(result)download('kleo-results-
 $('export-trade').addEventListener('click',()=>{if(tradeResult)download('kleo-trade-v2.json',JSON.stringify({...tradeResult,candidates:sortTradeCandidates(tradeResult.candidates,domain),sort_metric:domain==='comm'?'comm':'joint'},null,2),'application/json');});
 $('export-csv').addEventListener('click',()=>{if(!result)return;const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const header=['observer_id','observer_name',...sampleColumns.map(c=>c[0]),'scenario_json','metadata_json','observer_summary_json'];const rows=result.observers.flatMap(row=>row.samples.map(s=>[row.observer.id,row.observer.name,...sampleColumns.map(([k])=>s[k]),JSON.stringify(result.scenario),JSON.stringify(result.metadata),JSON.stringify(row.summary)]));download('kleo-results-v2.csv','\ufeff'+[header,...rows].map(r=>r.map(quote).join(',')).join('\r\n'),'text/csv;charset=utf-8');});
 $('share').addEventListener('click',async()=>{if(!applyInputs())return;const hash='scenario='+encodeURIComponent(JSON.stringify(scenario));if(hash.length>20000){error('큰 시나리오는 설정 JSON 파일로 공유해 주세요.');return;}const url=new URL(location.href);url.hash=hash;history.replaceState(null,'',url);try{await navigator.clipboard.writeText(url.href);text('status','설정 공유 링크를 복사했습니다.');}catch{text('status','주소창의 링크를 복사해 주세요.');}});
-try{const params=new URLSearchParams(location.hash.slice(1)),shared=params.get('scenario')??params.get('cfg');if(shared){scenario=importScenario(JSON.parse(shared),catalog);seconds=scenario.display.time_sec;selected=scenario.display.selected_satellite;}}catch(e){error('공유 설정을 읽지 못해 기본 설정으로 시작합니다: '+e.message);}
+let restoredSession=false;
+const params=new URLSearchParams(location.hash.slice(1)),shared=params.get('scenario')??params.get('cfg');
+if(shared!==null){
+  try{scenario=importScenario(JSON.parse(shared),catalog);text('save-status','공유 설정 · 변경하면 이 기기에 저장됩니다.');}
+  catch(e){error('공유 설정을 읽지 못해 기본 설정으로 시작합니다: '+e.message);text('save-status','기존 자동 저장은 유지됩니다.');}
+}else{
+  try{const saved=loadSession(localStorage,s=>importScenario(s,catalog));if(saved){scenario=saved.scenario;restoredSession=true;text('save-status','이 기기의 마지막 설정을 복원했습니다.');}}
+  catch{text('save-status','저장 설정을 읽을 수 없습니다 · 설정 파일을 불러올 수 있습니다.');}
+}
+seconds=scenario.display.time_sec;selected=scenario.display.selected_satellite;
 syncForm();scenario=validateScenario(scenario,catalog);refreshConfiguration();setDomain(scenario.display.domain);
-text('status',`준비 완료 · 모델 ${MODEL_VERSION}`);
+sessionReady=true;
+text('status',`준비 완료 · 모델 ${MODEL_VERSION}${restoredSession?' · 마지막 설정 복원 (기간 결과는 재분석)':''}`);
 if(matchMedia('(max-width:800px)').matches){$('configuration').classList.add('collapsed');text('toggle-settings','설정 펼치기');}

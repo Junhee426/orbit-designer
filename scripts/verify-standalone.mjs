@@ -50,4 +50,4 @@ assert.match(blueprint, /runtime: static/);
 assert.match(blueprint, /staticPublishPath: \.\/standalone/);
 assert(!/startCommand:|healthCheckPath:|runtime: docker/.test(blueprint), 'Root Blueprint must be a static site');
 assert.equal(await readFile(resolve(publish, 'render.yaml'), 'utf8'), blueprint, 'Blueprint copies differ');
-console.log(`Static deployment verified: ${required.length} required paths, ${references} relative references, model ${build.version}.`);
+console.log(`Static deployment verified: ${required.length} required paths, ${references} relative references, app ${build.version}.`);

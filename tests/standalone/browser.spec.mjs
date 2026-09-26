@@ -1,4 +1,111 @@
 import {test,expect} from '@playwright/test';
+import {SESSION_KEY} from '../../standalone/session.js';
+
+test('contact windows match availability, export all windows and navigate only current results',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-config="altitude"]').fill('500');
+  await page.locator('[data-config="planes"]').fill('2');
+  await page.locator('[data-config="satellitesPerPlane"]').fill('4');
+  await page.locator('[data-tab="analysis"]').click();
+  await page.locator('#duration').fill('60');await page.locator('#step').fill('60');
+  await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');
+  const downloaded=page.waitForEvent('download');await page.locator('#export-json').click();
+  const stream=await (await downloaded).createReadStream(),chunks=[];for await(const c of stream)chunks.push(c);
+  const data=JSON.parse(Buffer.concat(chunks)),row=data.observers[0];
+  expect(row.contactWindows.length).toBeGreaterThan(1);
+  expect(row.contactWindows.reduce((n,w)=>n+w.durationSec,0)).toBeCloseTo(3600);
+  expect(row.summary.connectedSec/36).toBeCloseTo(row.summary.commAvailability);
+  await expect(page.locator('#contact-table tbody tr')).toHaveCount(row.contactWindows.length);
+  await page.locator('#contact-filter').selectOption('connected');
+  await expect(page.locator('#contact-table tbody tr')).toHaveCount(row.contactWindows.filter(w=>w.state==='connected').length);
+  const csvDownload=page.waitForEvent('download');await page.locator('#export-contacts').click();
+  const csvStream=await (await csvDownload).createReadStream(),csvChunks=[];for await(const c of csvStream)csvChunks.push(c);
+  expect(Buffer.concat(csvChunks).toString().trim().split('\r\n')).toHaveLength(row.contactWindows.length+1);
+  await page.locator('#contact-filter').selectOption('all');
+  await page.locator('#contact-table tbody tr').nth(1).getByRole('button').click();
+  await expect(page.locator('body')).toHaveAttribute('data-workspace','design');
+  expect(Number(await page.locator('#time').inputValue())).toBeCloseTo(row.contactWindows[1].startSec);
+  await page.locator('[data-config="altitude"]').fill('900');await page.locator('[data-config="altitude"]').blur();
+  await page.locator('[data-tab="analysis"]').click();
+  await expect(page.locator('#contact-note')).toContainText('이전 설정');
+  await expect(page.locator('#contact-table button').first()).toBeDisabled();
+  await page.evaluate(()=>scrollTo(0,0));
+  await page.screenshot({path:'outputs/standalone-contacts-desktop.png',fullPage:true});
+  await page.locator('#contact-panel').screenshot({path:'outputs/standalone-contact-panel.png'});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2)).toBe(false);
+  await page.screenshot({path:'outputs/standalone-contacts-mobile.png',fullPage:true});
+  expect(errors).toEqual([]);
+});
+
+test('trade candidate applies the actual compared conditions and persists after reload',async({page})=>{
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-tab="trade"]').click();await page.locator('#duration').fill('5');
+  await page.locator('#run-trade').click();await expect(page.locator('#status')).toHaveText('분석 완료');
+  await page.locator('#duration').fill('10');await page.locator('#duration').blur();
+  await expect(page.locator('#trade-note')).toContainText('이전 설정');
+  await page.getByRole('button',{name:'500 km 128기 후보 적용',exact:true}).click();
+  await expect(page.locator('[data-config="altitude"]')).toHaveValue('500');
+  await expect(page.locator('[data-config="planes"]')).toHaveValue('8');
+  await expect(page.locator('#duration')).toHaveValue('5');
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  await page.reload();await expect(page.locator('#status')).toContainText('마지막 설정 복원');
+  await expect(page.locator('[data-config="altitude"]')).toHaveValue('500');
+  await expect(page.locator('#duration')).toHaveValue('5');
+});
+
+test('autosave preserves valid settings through invalid edits and restores map and observer state',async({page})=>{
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-config="altitude"]').fill('888');await page.locator('[data-config="altitude"]').blur();
+  await page.locator('#map-mode').selectOption('2d-map');
+  await page.locator('#observer').selectOption({index:1});
+  await page.locator('#satellite').selectOption({index:1});
+  await page.locator('#time-forward').click();
+  const satellite=await page.locator('#satellite').inputValue();
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  await page.locator('[data-config="altitude"]').fill('');await page.locator('[data-config="altitude"]').blur();
+  await expect(page.locator('#save-status')).toContainText('입력 확인 필요');
+  await page.reload();await expect(page.locator('#status')).toContainText('마지막 설정 복원');
+  await expect(page.locator('[data-config="altitude"]')).toHaveValue('888');
+  await expect(page.locator('#map-mode')).toHaveValue('2d-map');
+  await expect(page.locator('#observer')).toHaveValue('KOR:1');
+  await expect(page.locator('#satellite')).toHaveValue(satellite);
+  await expect(page.locator('#time')).toHaveValue('300');
+});
+
+test('shared links take precedence and unreadable saved data survives an untouched reload',async({page})=>{
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-config="altitude"]').fill('888');await page.locator('[data-config="altitude"]').blur();
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  const saved=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),SESSION_KEY);
+  saved.scenario.configuration.altitude=500;
+  await page.goto('/?shared-test=1#scenario='+encodeURIComponent(JSON.stringify(saved.scenario)));
+  await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(page.locator('[data-config="altitude"]')).toHaveValue('500');
+  expect(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).scenario.configuration.altitude,SESSION_KEY)).toBe(888);
+  await page.evaluate(key=>localStorage.setItem(key,'broken'),SESSION_KEY);
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(page.locator('#save-status')).toContainText('읽을 수 없습니다');
+  await page.reload();await expect(page.locator('#status')).toContainText('준비 완료');
+  expect(await page.evaluate(key=>localStorage.getItem(key),SESSION_KEY)).toBe('broken');
+});
+
+test('unavailable storage does not block analysis or playback with bounded steps',async({page})=>{
+  await page.addInitScript(()=>Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Blocked','SecurityError');}}));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await page.locator('[data-tab="analysis"]').click();await page.locator('#duration').fill('2.5');await page.locator('#step').fill('60');
+  await page.locator('#run').click();await expect(page.locator('#status')).toHaveText('분석 완료');
+  await expect(page.locator('#save-status')).toContainText('자동 저장 불가');
+  await page.locator('[data-tab="design"]').click();await page.locator('#time-forward').click();await expect(page.locator('#time')).toHaveValue('60');
+  await page.locator('#time-forward').click();await page.locator('#time-forward').click();await expect(page.locator('#time')).toHaveValue('150');
+  await expect(page.locator('#time-forward')).toBeDisabled();
+  await page.locator('#time-back').click();await expect(page.locator('#time')).toHaveValue('90');
+  await page.locator('#time-reset').click();await expect(page.locator('#time')).toHaveValue('0');await expect(page.locator('#time-back')).toBeDisabled();
+  await page.locator('#play-speed').selectOption('600');await page.locator('#play').click();
+  await expect(page.locator('#time')).toHaveValue('150');await expect(page.locator('#play')).toHaveAttribute('aria-pressed','false');
+  await page.screenshot({path:'outputs/standalone-playback.png',fullPage:true});
+});
 test('standalone flow: local assets, J2, countries, analysis, exports, stale results and restored custom observer',async({page})=>{
   const errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if((/^https?:/.test(r.url())&&!r.url().startsWith('http://127.0.0.1:8080'))||r.url().includes('/api/'))external.push(r.url());});
   await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');

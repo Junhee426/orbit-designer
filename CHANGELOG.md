@@ -1,5 +1,13 @@
 # Changelog
 
+## Browser 2.1.0 — Communication contact analysis
+
+- Add sampled contact windows, weighted throughput, minimum margin and continuous service interruption metrics, with CSV export and map navigation.
+- Apply a compared Walker candidate together with its original analysis conditions.
+- Save and restore valid settings locally; preserve the last valid settings during invalid edits and handle unavailable storage.
+- Add playback speed, bounded time steps and end-of-period pause.
+- Keep numerical propagation and RF model version 2.0.0 and scenario schema v2 unchanged.
+
 ## 1.2.0 — Reliable visibility analysis and candidate comparison
 
 - Fix sampled outage durations, time-weighted metrics and reconnection counting.
