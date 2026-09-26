@@ -74,10 +74,16 @@ export function getLocation(config) {
     ? { name: '사용자 지정', lat: config.latitude, lon: config.longitude }
     : LOCATIONS[config.location];
 }
+// Position on a spherical Earth for a given geodetic lat/lon, in km (ECEF).
+// Shared by observerFrame() and the canvas renderer's graticule/heatmap projection.
+export function geodeticPosition(latDeg, lonDeg) {
+  const lat = latDeg * RAD, lon = lonDeg * RAD, c = Math.cos(lat);
+  return [EARTH_RADIUS * c * Math.cos(lon), EARTH_RADIUS * c * Math.sin(lon), EARTH_RADIUS * Math.sin(lat)];
+}
 export function observerFrame(latDeg, lonDeg) {
   const lat = latDeg * RAD, lon = lonDeg * RAD;
   const up = [Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
-  return { position: up.map(x => x * EARTH_RADIUS), up,
+  return { position: geodeticPosition(latDeg, lonDeg), up,
     east: [-Math.sin(lon), Math.cos(lon), 0],
     north: [-Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat)] };
 }
@@ -237,10 +243,6 @@ export function linkBudget(sat, config) {
   return { mbps, snr, fspl, cn0, ebn0, margin:ebn0-config.requiredEbn0, navDuty, delayMs: sat.range * 1e6 / C,
     dopplerKHz: sat.rangeRate === 0 ? 0 : -sat.rangeRate * 1000 / C * config.frequency * 1e6 };
 }
-export function snapshot(config, minutes = 0, constellation) {
-  const cfg = validateConfig(config);
-  return evaluateSnapshot(cfg, prepareGeometry(cfg, minutes, constellation));
-}
 // Orbit propagation and observer geometry do not depend on navigation time allocation.
 export function prepareGeometry(cfg, minutes, constellation) {
   if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) throw new Error('시각은 0–1440분 범위입니다.');
@@ -369,20 +371,6 @@ export function quantile(values, q) {
   const at = (valid.length - 1) * q, lo = Math.floor(at), hi = Math.ceil(at);
   return valid[lo] + (valid[hi] - valid[lo]) * (at - lo);
 }
-export function summarize(samples, config) {
-  const count = samples.length, ratio = fn => count ? 100 * samples.filter(fn).length / count : 0;
-  return { samples: count, stepMinutes: samples.length > 1 ? samples[1].minutes - samples[0].minutes : null,
-    medianRate: quantile(samples.map(s => s.rate), .5), medianHrms: quantile(samples.map(s => s.hrms), .5),
-    medianBaseline: quantile(samples.map(s => s.baseline), .5), medianGnssLEO: quantile(samples.map(s => s.gnssLEO), .5),
-    commAvailability: ratio(s => s.commPass), navAvailability: ratio(s => s.navPass), jointAvailability: ratio(s => s.jointPass),
-    baselineAvailability: ratio(s => s.baseline !== null && s.baseline <= config.horizontalTarget),
-    gnssLeoAvailability: ratio(s => s.gnssLEO !== null && s.gnssLEO <= config.horizontalTarget),
-    validNavAvailability: ratio(s => s.hrms !== null),
-    minLEO: Math.min(...samples.map(s => s.leoVisible)), maxLEO: Math.max(...samples.map(s => s.leoVisible)) };
-}
-export function resourceSweep(config, minutes) {
-  return parameterSweep(config, minutes, 'navShare');
-}
 // Ranges mirror validateConfig's own limits for each field.
 const SWEEP_SPECS = {
   navShare: { min: 0, max: 40, steps: 21 },
@@ -392,7 +380,6 @@ const SWEEP_SPECS = {
   satellitesPerPlane: { min: 4, max: 32, steps: 15, integer: true },
   payloadPercent: { min: 0, max: 100, steps: 21 },
 };
-export const SWEEP_AXES = Object.keys(SWEEP_SPECS);
 function sweepAxisPoints({ min, max, steps, integer }) {
   return Array.from({ length: steps }, (_, i) => {
     const raw = min + (max - min) * i / (steps - 1);

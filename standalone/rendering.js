@@ -1,7 +1,7 @@
-import { EARTH_RADIUS, observerFrame, orbitState } from './engine.js';
-import { footprint, groundTrack } from './geometry.js';
+import { EARTH_RADIUS, observerFrame, geodeticPosition } from './engine.js';
+import { footprint, groundTrack, orbitRing, groundTrackSurface } from './geometry.js';
+import { SAT_COLORS, LEO_MARKER, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, satelliteColor, tracePath, withAlpha } from './style.js';
 const NS = 'http://www.w3.org/2000/svg';
-const COLORS = { LEO: '#48d4f0', GNSS: '#e3ad65', REGIONAL: '#b4a0ff' };
 const TWO_PI = Math.PI * 2;
 const wrapLongitude = lon => ((lon + 180) % 360 + 360) % 360 - 180;
 function node(tag, attributes = {}, text) {
@@ -152,14 +152,13 @@ export class Globe {
         ctx.beginPath();polygon.forEach((p,i)=>i?ctx.lineTo(p.x+offset,p.y):ctx.moveTo(p.x+offset,p.y));ctx.closePath();ctx.fill();
       }
     };
-    const surface = (lat, lon) => { lat *= Math.PI / 180; lon *= Math.PI / 180; const c = Math.cos(lat); return [EARTH_RADIUS*c*Math.cos(lon),EARTH_RADIUS*c*Math.sin(lon),EARTH_RADIUS*Math.sin(lat)]; };
+    const surface = geodeticPosition;
     if (this.showOrbits) {
       const orbitPlanes = new Map();
       shown.forEach(o => { const key = o.satrec ? o.id : o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
       for (const o of orbitPlanes.values()) {
         const color = o.group === 'LEO' ? 'rgba(72,212,240,.20)' : o.group === 'GNSS' ? 'rgba(246,183,91,.25)' : 'rgba(193,160,255,.26)';
-        const positions = o.satrec ? groundTrack(o, this.snapshot.minutes)
-          : Array.from({ length: 121 }, (_, i) => orbitState(o, this.snapshot.minutes * 60, TWO_PI * i / 120).position);
+        const positions = o.satrec ? groundTrack(o, this.snapshot.minutes) : orbitRing(o, this.snapshot.minutes, 121);
         stroke(positions, color, .65 * this.orbitWidth);
       }
     }
@@ -179,7 +178,7 @@ export class Globe {
       for (const cell of this.cells) {
         const corners = [[cell.south,cell.west],[cell.south,cell.east],[cell.north,cell.east],[cell.north,cell.west]].map(([la,lo]) => project(surface(la, lo)));
         if (corners.some(q => !unoccluded(q))) continue;
-        ctx.fillStyle = cell.count ? `hsla(172,70%,${(30 + Math.min(cell.count, 12) / 40 * 100).toFixed(0)}%,.55)` : 'rgba(196,82,89,.55)';
+        ctx.fillStyle = cell.count ? `hsla(${HEATMAP_HUE},${HEATMAP_SAT}%,${heatmapLightness(cell.count).toFixed(0)}%,.55)` : withAlpha(HEATMAP_EMPTY, .55);
         fillPolygon(corners);
       }
     }
@@ -197,14 +196,14 @@ export class Globe {
         stroke([this.snapshot.observer,sat.position],'rgba(72,212,240,.45)',1);
       }
       if (this.snapshot.best) {
-        stroke([this.snapshot.observer,this.snapshot.best.position],'#ffb55d',2);
+        stroke([this.snapshot.observer,this.snapshot.best.position],SAT_COLORS.best,2);
       }
     }
     if (this.showIsl && this.edges.length) {
       const byId = new Map(this.snapshot.satellites.map(s => [s.id, s]));
       for (const e of this.edges) {
         const a = byId.get(e.a), b = byId.get(e.b); if (!a || !b) continue;
-        stroke([a.position, b.position], '#36685f', 1);
+        stroke([a.position, b.position], ISL_LINE, 1);
       }
     }
     for (const sat of this.snapshot.satellites) {
@@ -212,12 +211,10 @@ export class Globe {
       const q = project(sat.position); if (!unoccluded(q)) continue;
       const selected = sat.id === this.selectedId, chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
       ctx.globalAlpha = map ? 1 : q.z < 0 ? .4 : this.full && sat.group === 'LEO' && !navUsed ? .55 : 1;
-      ctx.fillStyle = selected ? '#ffffff' : chosen ? '#ffb55d' : sat.group === 'LEO' ? (navUsed ? '#47dacb' : sat.link ? '#74b6ff' : '#53657a') : COLORS[sat.group];
+      ctx.fillStyle = satelliteColor({selected, chosen, group: sat.group, navUsed, link: sat.link});
       const r = (selected || chosen ? 4.8 : navUsed ? 3.2 : 1.8) * this.satSize;
       ctx.beginPath();
-      if (this.satShape === 'square') ctx.rect(q.x - r, q.y - r, r * 2, r * 2);
-      else if (this.satShape === 'diamond') { ctx.moveTo(q.x, q.y - r); ctx.lineTo(q.x + r, q.y); ctx.lineTo(q.x, q.y + r); ctx.lineTo(q.x - r, q.y); ctx.closePath(); }
-      else ctx.arc(q.x, q.y, r, 0, TWO_PI);
+      tracePath(ctx, this.satShape, q.x, q.y, r);
       ctx.fill();
       if (selected) { ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(q.x, q.y, r + 4, 0, TWO_PI); ctx.stroke(); }
       if (chosen) {
@@ -232,13 +229,12 @@ export class Globe {
         const positions = footprint(selSat.position, this.commElevation).map(([lon, lat]) => surface(lat, lon));
         const ring = positions.map(project);
         if (ring.length && ring.every(unoccluded)) {
-          ctx.fillStyle = 'rgba(132,229,223,.15)';fillPolygon(ring);
-          stroke(positions,'#84e5df',1.2);
+          ctx.fillStyle = withAlpha(FOOTPRINT_LINE,.15);fillPolygon(ring);
+          stroke(positions,FOOTPRINT_LINE,1.2);
         }
       }
       if (selOrbit) {
-        const track = groundTrack(selOrbit, this.snapshot.minutes).map(p => { const scale = EARTH_RADIUS / Math.hypot(...p); return p.map(v => v * scale); });
-        stroke(track, '#e8db91', 2);
+        stroke(groundTrackSurface(selOrbit, this.snapshot.minutes), GROUND_TRACK_LINE, 2);
       }
     }
     if (map || obs.z >= 0) {
@@ -265,9 +261,9 @@ export function skyPlot(container, snapshot) {
     const a = sat.azimuth * Math.PI / 180, rr = r * (1 - sat.elevation / 90);
     const x = cx + rr * Math.sin(a), y = cy - rr * Math.cos(a);
     let mark;
-    if (sat.group === 'GNSS') mark = node('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1, fill: COLORS.GNSS });
-    else if (sat.group === 'REGIONAL') mark = node('path', { d: `M${x} ${y-5}L${x+5} ${y}L${x} ${y+5}L${x-5} ${y}Z`, fill: COLORS.REGIONAL });
-    else mark = node('circle', { cx: x, cy: y, r: 4, fill: COLORS.LEO });
+    if (sat.group === 'GNSS') mark = node('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1, fill: SAT_COLORS.GNSS });
+    else if (sat.group === 'REGIONAL') mark = node('path', { d: `M${x} ${y-5}L${x+5} ${y}L${x} ${y+5}L${x-5} ${y}Z`, fill: SAT_COLORS.REGIONAL });
+    else mark = node('circle', { cx: x, cy: y, r: 4, fill: LEO_MARKER });
     mark.append(node('title', {}, sat.id + ' · 고도각 ' + sat.elevation.toFixed(1) + '° · ' + sat.range.toFixed(0) + ' km')); svg.append(mark);
     if (sat.id === snapshot.best?.id) svg.append(node('circle', { cx: x, cy: y, r: 8, fill: 'none', stroke: '#fff', 'stroke-width': 1.5 }));
   }

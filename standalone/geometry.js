@@ -76,3 +76,13 @@ export function groundTrack(orbit,minutes) {
   const period=orbit.satrec?2*Math.PI/orbit.satrec.no:2*Math.PI*Math.sqrt(orbit.radius**3/398600.4418)/60;
   return Array.from({length:97},(_,i)=>orbitState(orbit,(minutes+period*i/96)*60).position);
 }
+// A non-TLE orbit's full ring at one instant, sampled at `points` positions around it.
+// Shared by the Cesium and canvas renderers' orbit-plane display.
+export function orbitRing(orbit,minutes,points) {
+  return Array.from({length:points},(_,i)=>orbitState(orbit,minutes*60,2*Math.PI*i/(points-1)).position);
+}
+// The selected satellite's ground track projected onto Earth's surface instead of its
+// orbital altitude, for the "shadow track" overlay. Shared by both renderers.
+export function groundTrackSurface(orbit,minutes) {
+  return groundTrack(orbit,minutes).map(p=>{const scale=EARTH_RADIUS/norm(p);return p.map(v=>v*scale);});
+}
