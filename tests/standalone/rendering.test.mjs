@@ -4,14 +4,17 @@ import {Globe} from '../../standalone/rendering.js';
 import {OrbitViewer} from '../../standalone/viewer.js';
 import {observerFrame,EARTH_RADIUS} from '../../standalone/engine.js';
 import {defaultScenario} from '../../standalone/scenario.js';
+import {SAT_COLORS,VISIBLE_OUTLINE} from '../../standalone/style.js';
 
 function fixture(t){
-  const arcs=[],lines=[],fills=[],listeners={};let last=null,path=[],textures=0,frames=0;
+  const arcs=[],lines=[],fills=[],paints=[],strokes=[],listeners={};let last=null,path=[],primitive=null,textures=0,frames=0;
   const ctx=new Proxy({
-    clearRect(){frames++;arcs.length=lines.length=fills.length=0;},
-    beginPath(){last=null;path=[];},moveTo(x,y){last=[x,y];path.push(last);},
+    clearRect(){frames++;arcs.length=lines.length=fills.length=paints.length=strokes.length=0;},
+    beginPath(){last=null;path=[];primitive=null;},moveTo(x,y){last=[x,y];path.push(last);},
     lineTo(x,y){if(last)lines.push([last,[x,y]]);last=[x,y];path.push(last);},
-    arc(x,y,r){arcs.push({x,y,r});},fill(){if(path.length)fills.push([...path]);},
+    arc(x,y,r){arcs.push({x,y,r});primitive={x,y,r};},
+    fill(){if(path.length)fills.push([...path]);paints.push({primitive,path:[...path],color:this.fillStyle,alpha:this.globalAlpha});},
+    stroke(){strokes.push({color:this.strokeStyle,alpha:this.globalAlpha});},
     createRadialGradient(){return {addColorStop(){}};},
     createImageData(w,h){textures++;return {data:new Uint8ClampedArray(w*h*4)};}
   },{get:(obj,key)=>key in obj?obj[key]:()=>{}});
@@ -25,8 +28,34 @@ function fixture(t){
   const globe=new Globe(canvas);
   const snapshot={minutes:0,satellites:[],observer:observerFrame(37.5,179.9).position,location:{name:'Site'}};
   globe.set(snapshot,[]);
-  return {globe,snapshot,arcs,lines,fills,listeners,get textures(){return textures;},get frames(){return frames;}};
+  return {globe,snapshot,arcs,lines,fills,paints,strokes,listeners,get textures(){return textures;},get frames(){return frames;}};
 }
+
+test('canvas satellites have equal size and opacity; visible outlines track the domain and toggle',t=>{
+  const f=fixture(t),g=f.globe;g.setMode('map');g.setFull(true);g.setLayers(false,false,false,false,20);
+  const satellites=[
+    {id:'visible',group:'LEO',position:[7378,0,0],link:{}},
+    {id:'other',group:'LEO',position:[0,7378,0]},
+    {id:'nav',group:'GNSS',position:[0,-20000,0],navUsed:true},
+    {id:'selected',group:'LEO',position:[-7378,0,0]}
+  ];
+  const snapshot={...f.snapshot,satellites,best:satellites[0]};
+  const markers=()=>f.paints.filter(p=>Object.values(SAT_COLORS).includes(p.color));
+  const outlines=()=>f.strokes.filter(s=>s.color===VISIBLE_OUTLINE);
+  g.set(snapshot,[],'selected');
+  assert.equal(markers().length,4);
+  assert.ok(markers().every(p=>p.primitive.r===4&&p.alpha===1));
+  assert.equal(outlines().length,2);
+  g.highlightVisible=false;g.draw();
+  assert.equal(outlines().length,0);assert.ok(markers().every(p=>p.primitive.r===4&&p.alpha===1));
+  g.highlightVisible=true;g.setFull(false);
+  assert.equal(markers().length,3);assert.equal(outlines().length,1);
+  g.setStyle('circle',2,1);assert.ok(markers().every(p=>p.primitive.r===8&&p.alpha===1));
+  // Front-facing ordinary LEO markers used to be faded only in the globe view.
+  satellites.forEach(s=>s.position=observerFrame(25,120).position.map(v=>v*1.2));
+  g.setFull(true);g.setMode('globe');
+  assert.equal(markers().length,4);assert.ok(markers().every(p=>p.primitive.r===8&&p.alpha===1));
+});
 
 test('flat map centers an observer after zooming and supports dragging',t=>{
   const f=fixture(t),g=f.globe;g.setMode('map');g.zoom(2);g.center(37.5,179.9);

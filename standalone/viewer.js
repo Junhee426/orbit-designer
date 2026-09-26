@@ -1,16 +1,15 @@
 import {Globe} from './rendering.js';
 import {footprint,groundTrack,orbitRing,groundTrackSurface} from './geometry.js';
-import {SAT_COLORS,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,satelliteColor,tracePath} from './style.js';
-function shapeImage(shape){
+import {SAT_COLORS,SATELLITE_DIAMETER,satelliteIsVisible,paintSatellite,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,satelliteColor} from './style.js';
+function shapeImage(shape,fill,outlined){
   const size=64,c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d');
-  const r=size/2-3,cx=size/2,cy=size/2;ctx.fillStyle='#fff';ctx.beginPath();
-  tracePath(ctx,shape,cx,cy,r);
-  ctx.fill();return c;
+  paintSatellite(ctx,shape,size/2,size/2,size/2-3,fill,outlined);
+  return c;
 }
 export class OrbitViewer {
   constructor(container,onSelect,worldLines=[]) {
     this.container=container;this.onSelect=onSelect;this.worldLines=worldLines;this.points=new Map();this.layers=[];this.outlineEntities=[];this.selected=null;this.earthStyle='image';this.appliedEarthStyle=null;
-    this.uiMode='3d';this.shapeImages={circle:shapeImage('circle'),square:shapeImage('square'),diamond:shapeImage('diamond')};
+    this.uiMode='3d';this.markerImages=new Map();
     this.canvas=document.createElement('canvas');this.canvas.style.cssText='width:100%;height:100%;display:block;touch-action:none';this.canvas.hidden=true;
     this.fallback=new Globe(this.canvas,worldLines);
     try {
@@ -26,7 +25,7 @@ export class OrbitViewer {
       // entities rebuilt their geometry (asynchronously, in workers) on each draw.
       this.lines=this.viewer.scene.primitives.add(new C.PolylineCollection());
       this.billboards=this.viewer.scene.primitives.add(new C.BillboardCollection());
-      this.colors=new Map();this.pointShape=null;this.observerKey='';this.observerEntities=[];
+      this.colors=new Map();this.observerKey='';this.observerEntities=[];
       C.SingleTileImageryProvider.fromUrl(new URL('./earth.jpg',import.meta.url).href).then(p=>{this.imageryLayer=this.viewer.imageryLayers.addImageryProvider(p);this.applyEarthStyle(this.earthStyle,true);}).catch(()=>{});
       this.viewer.screenSpaceEventHandler.setInputAction(click=>{const p=this.viewer.scene.pick(click.position);if(p?.id?.satId)this.onSelect(p.id.satId);},C.ScreenSpaceEventType.LEFT_CLICK);
       this.center(127,36);
@@ -85,6 +84,7 @@ export class OrbitViewer {
     this.container.dataset.navigation=showNavigation?'visible':'hidden';
     this.applyEarthStyle(scenario.display.earthStyle,false,false);
     this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth,false);
+    this.fallback.highlightVisible=scenario.display.highlightVisible??true;
     if(!this.usingCesium){
       this.fallback.setFull(showNavigation,false);
       this.fallback.setLayers(scenario.display.orbits,scenario.display.isl,scenario.display.heatmap,scenario.display.footprint,scenario.configuration.commElevation);
@@ -97,18 +97,21 @@ export class OrbitViewer {
     const xyz=p=>new C.Cartesian3(p[0]*1000,p[1]*1000,p[2]*1000);
     const color=css=>{let c=this.colors.get(css);if(!c){c=C.Color.fromCssColorString(css);this.colors.set(css,c);}return c;};
     const satSize=scenario.display.satSize??1,orbitWidth=scenario.display.orbitWidth??1;
-    const shape=this.shapeImages[scenario.display.satShape]?scenario.display.satShape:'circle',satImage=this.shapeImages[shape];
-    // A stable image id lets the texture atlas reuse the shape instead of adding a copy per assignment.
-    const reshape=this.pointShape!==shape;this.pointShape=shape;
+    const shape=['circle','square','diamond'].includes(scenario.display.satShape)?scenario.display.satShape:'circle';
     const keep=new Set(),scratch=new C.Cartesian3();
     for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let b=this.points.get(sat.id);
-      if(!b){b=this.billboards.add({id:{satId:sat.id}});b.setImage(shape,satImage);this.points.set(sat.id,b);}
-      else if(reshape)b.setImage(shape,satImage);
+      if(!b){b=this.billboards.add({id:{satId:sat.id}});this.points.set(sat.id,b);}
       b.position=C.Cartesian3.fromElements(sat.position[0]*1000,sat.position[1]*1000,sat.position[2]*1000,scratch);
       const navUsed=showNavigation&&sat.navUsed;
-      const px=(sat.id===selectedId?11:navUsed||sat.link?7:3)*satSize;
+      const px=SATELLITE_DIAMETER*satSize;
       b.width=px;b.height=px;
-      b.color=color(satelliteColor({selected:sat.id===selectedId,chosen:sat.id===snapshot.best?.id,group:sat.group,navUsed,link:sat.link}));
+      const fill=satelliteColor({selected:sat.id===selectedId,chosen:sat.id===snapshot.best?.id,group:sat.group,navUsed,link:sat.link});
+      const outlined=(scenario.display.highlightVisible??true)&&satelliteIsVisible(sat,showNavigation);
+      const imageKey=`${shape}:${fill}:${outlined?'outline':'plain'}`;
+      // Reuse a bounded set of textures for every shape/color/outline combination.
+      if(!this.markerImages.has(imageKey))this.markerImages.set(imageKey,shapeImage(shape,fill,outlined));
+      if(b.image!==imageKey)b.setImage(imageKey,this.markerImages.get(imageKey));
+      b.color=C.Color.WHITE;
     }
     for(const [id,b]of this.points)if(!keep.has(id)){this.billboards.remove(b);this.points.delete(id);}
     let used=0;

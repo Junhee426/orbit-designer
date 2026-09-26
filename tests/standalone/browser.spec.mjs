@@ -1,6 +1,66 @@
 import {test,expect} from '@playwright/test';
 import {SESSION_KEY} from '../../standalone/session.js';
 
+test('satellite markers keep equal size and alpha with optional visible outlines in every map mode',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(page.locator('#highlight-visible')).toBeChecked();
+  await page.evaluate(()=>{
+    const original=Cesium.BillboardCollection.prototype.update;
+    Cesium.BillboardCollection.prototype.update=function(state){if(this.length&&this.get(0).id?.satId)window.satelliteBillboards=this;return original.call(this,state);};
+  });
+  const markers=()=>page.evaluate(()=>{
+    const collection=window.satelliteBillboards;
+    return Array.from({length:collection?.length??0},(_,i)=>{
+      const b=collection.get(i);return {id:b.id.satId,width:b.width,height:b.height,alpha:b.color.alpha,image:b.image};
+    });
+  });
+  await page.locator('#sat-size').fill('2');
+  await expect.poll(async()=>(await markers()).length).toBeGreaterThan(128);
+  for(const mode of ['3d','2d']){
+    await page.locator('#map-mode').selectOption(mode);
+    for(const shape of ['circle','square','diamond']){
+      await page.locator('#sat-shape').selectOption(shape);
+      await expect.poll(async()=>{const rows=await markers();return rows.length>0&&rows.every(b=>b.width===16&&b.height===16&&b.alpha===1&&b.image.startsWith(shape+':'));}).toBe(true);
+      await expect.poll(async()=>(await markers()).filter(b=>b.image.endsWith(':outline')).length).toBeGreaterThan(0);
+      expect((await markers()).some(b=>b.image.endsWith(':plain'))).toBe(true);
+      await page.locator('#highlight-visible').uncheck();
+      await expect.poll(async()=>(await markers()).every(b=>b.image.endsWith(':plain'))).toBe(true);
+      await page.locator('#highlight-visible').check();
+    }
+  }
+  await page.locator('#time').fill('3600');
+  const expected=await page.evaluate(async()=>{
+    const {defaultScenario}=await import('/scenario.js'),{buildConstellations,statesAt,geometryAt,evaluateSnapshot}=await import('/engine.js');
+    const cfg=defaultScenario().configuration;
+    const snapshot=evaluateSnapshot(cfg,geometryAt(statesAt(buildConstellations(cfg),60),{lat:37.5665,lon:126.978},60));
+    return snapshot.satellites.filter(s=>s.link||s.navUsed).map(s=>s.id).sort();
+  });
+  await expect.poll(async()=>(await markers()).filter(b=>b.image.endsWith(':outline')).map(b=>b.id).sort()).toEqual(expected);
+  await page.locator('#satellite').selectOption({index:1});
+  expect((await markers()).every(b=>b.width===16&&b.height===16&&b.alpha===1)).toBe(true);
+  for(const mode of ['2d-map','2d-globe']){
+    await page.locator('#map-mode').selectOption(mode);
+    const canvas=page.locator('#globe > canvas');
+    const outlined=await canvas.evaluate(c=>c.toDataURL());
+    await page.locator('#highlight-visible').uncheck();
+    expect(await canvas.evaluate(c=>c.toDataURL())).not.toBe(outlined);
+    await page.locator('#highlight-visible').check();
+  }
+  await page.locator('#map-mode').selectOption('3d');
+  await page.locator('#sat-shape').selectOption('circle');
+  await page.locator('.globe-panel').screenshot({path:'outputs/satellite-outlines-desktop.png'});
+  await page.locator('#highlight-visible').uncheck();
+  await expect(page.locator('#globe-legend')).not.toContainText('가시 위성 테두리');
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  await page.reload();await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(page.locator('#highlight-visible')).not.toBeChecked();
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2)).toBe(false);
+  await page.locator('.globe-panel').screenshot({path:'outputs/satellite-outlines-mobile.png'});
+  expect(errors).toEqual([]);
+});
+
 test('contact windows match availability, export all windows and navigate only current results',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');

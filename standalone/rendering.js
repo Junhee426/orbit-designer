@@ -1,6 +1,6 @@
 import { EARTH_RADIUS, observerFrame, geodeticPosition } from './engine.js';
 import { footprint, groundTrack, orbitRing, groundTrackSurface } from './geometry.js';
-import { SAT_COLORS, LEO_MARKER, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, satelliteColor, tracePath, withAlpha } from './style.js';
+import { SAT_COLORS, LEO_MARKER, SATELLITE_DIAMETER, satelliteIsVisible, paintSatellite, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, satelliteColor, withAlpha } from './style.js';
 const NS = 'http://www.w3.org/2000/svg';
 const TWO_PI = Math.PI * 2;
 const wrapLongitude = lon => ((lon + 180) % 360 + 360) % 360 - 180;
@@ -16,6 +16,7 @@ export class Globe {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
     this.lat = 25; this.lon = 120; this.full = false; this.mode = 'globe'; this.earthStyle = 'image'; this.worldLines = worldLines; this.cached = null;
     this.satShape = 'circle'; this.satSize = 1; this.orbitWidth = 1; this.zoomLevel = 1;
+    this.highlightVisible = true;
     this.mapCenter = {lat:0,lon:0};
     this.showOrbits = true; this.showIsl = false; this.showHeatmap = false; this.showFootprint = true; this.commElevation = 20;
     this.texture = null; this.snapshot = null; this.orbits = []; this.selectedId = null; this.edges = []; this.cells = [];
@@ -210,13 +211,8 @@ export class Globe {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
       const selected = sat.id === this.selectedId, chosen = sat.id === this.snapshot.best?.id, navUsed = this.full && sat.navUsed;
-      ctx.globalAlpha = map ? 1 : q.z < 0 ? .4 : this.full && sat.group === 'LEO' && !navUsed ? .55 : 1;
-      ctx.fillStyle = satelliteColor({selected, chosen, group: sat.group, navUsed, link: sat.link});
-      const r = (selected || chosen ? 4.8 : navUsed ? 3.2 : 1.8) * this.satSize;
-      ctx.beginPath();
-      tracePath(ctx, this.satShape, q.x, q.y, r);
-      ctx.fill();
-      if (selected) { ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(q.x, q.y, r + 4, 0, TWO_PI); ctx.stroke(); }
+      const fill = satelliteColor({selected, chosen, group: sat.group, navUsed, link: sat.link});
+      paintSatellite(ctx, this.satShape, q.x, q.y, SATELLITE_DIAMETER / 2 * this.satSize, fill, this.highlightVisible && satelliteIsVisible(sat, this.full));
       if (chosen) {
         ctx.globalAlpha = 1; ctx.font = '13px system-ui'; ctx.fillStyle = '#ffe0ae';
         ctx.fillText(sat.id, Math.min(w - 42, Math.max(5, q.x + 9)), Math.max(16, q.y - 5));

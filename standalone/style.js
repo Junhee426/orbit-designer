@@ -5,6 +5,23 @@ export const SAT_COLORS = {
   navUsed: '#47dacb', linked: '#74b6ff', idle: '#53657a',
 };
 export const LEO_MARKER = '#48d4f0'; // categorical "this is LEO" marker (sky plot), not the state cascade below
+export const SATELLITE_DIAMETER = 8;
+export const VISIBLE_OUTLINE = '#eaff83';
+export function satelliteIsVisible(satellite, showNavigation) {
+  return Boolean(satellite.link || (showNavigation && satellite.navUsed));
+}
+
+// Clip the stroke inside the marker so highlighting never changes its outer size.
+export function paintSatellite(ctx, shape, x, y, radius, fill, outlined) {
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();tracePath(ctx, shape, x, y, radius);
+  ctx.fillStyle = fill;ctx.fill();
+  if (outlined) {
+    ctx.clip();ctx.strokeStyle = VISIBLE_OUTLINE;ctx.lineWidth = radius * .75;ctx.lineJoin = 'round';ctx.stroke();
+  }
+  ctx.restore();
+}
 export const ORBIT_LINE = '#344f6a';
 export const ISL_LINE = '#36685f';
 export const FOOTPRINT_LINE = '#84e5df';

@@ -68,6 +68,13 @@ test('domain/satellite-style display fields validate bounds and default cleanly 
   const upgraded=validateScenario({...s,display:legacyDisplay},catalog);
   assert.equal(upgraded.display.domain,'commNav');assert.equal(upgraded.display.satShape,'circle');assert.equal(upgraded.display.satSize,1);assert.equal(upgraded.display.orbitWidth,1);
 });
+
+test('visible outline preference defaults on for old scenarios and preserves an explicit off value',()=>{
+  const s=defaultScenario();assert.equal(s.display.highlightVisible,true);
+  s.display.highlightVisible=false;assert.equal(importScenario(JSON.parse(JSON.stringify(s)),catalog).display.highlightVisible,false);
+  delete s.display.highlightVisible;assert.equal(validateScenario(s,catalog).display.highlightVisible,true);
+  for(const invalid of ['false',0,null])assert.throws(()=>validateScenario({...s,display:{...s.display,highlightVisible:invalid}},catalog));
+});
 test('legacy scenario imports preserve explicit coordinates and unknown versions fail',()=>{
   const v1=read('../../examples/scenario_v1_2.json');v1.configuration.stations=[{name:'User',lat_deg:1.234,lon_deg:5.678}];
   const s=importScenario(v1,catalog);assert.equal(s.custom_observers[0].lat,1.234);assert.deepEqual(s.selection.country_codes,[]);

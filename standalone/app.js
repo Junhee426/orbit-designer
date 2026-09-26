@@ -5,7 +5,7 @@ import {islEdges,routeBetween,coverageGrid} from './geometry.js';
 import {OrbitViewer} from './viewer.js';
 import {sortTradeCandidates} from './analysis.js';
 import {loadSession,saveSession} from './session.js';
-import {SAT_COLORS,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,HEATMAP_EMPTY} from './style.js';
+import {SAT_COLORS,VISIBLE_OUTLINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,HEATMAP_EMPTY} from './style.js';
 
 const $=id=>document.getElementById(id);
 const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
@@ -69,6 +69,7 @@ function syncForm(){
   $('custom-observers').replaceChildren();scenario.custom_observers.forEach(addObserverRow);
   $('map-mode').value=scenario.display.mode;$('earth-style').value=scenario.display.earthStyle;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
   $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');
+  $('highlight-visible').checked=scenario.display.highlightVisible;
   $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');
   modeFields();
 }
@@ -174,6 +175,7 @@ function renderLegend(){
   if(nav){
     items.push(legendItem(shape,SAT_COLORS.navUsed,'항법 겸용 LEO'),legendItem(shape,SAT_COLORS.GNSS,'GNSS'),legendItem(shape,SAT_COLORS.REGIONAL,'지역항법'));
   }
+  if(scenario.display.highlightVisible){const item=legendItem(shape,VISIBLE_OUTLINE,'가시 위성 테두리');item.querySelector('.mark').classList.add('outline');items.push(item);}
   if(scenario.display.isl)items.push(legendItem('line',ISL_LINE,'ISL'));
   if(scenario.display.heatmap)items.push(legendItem('square',`hsl(${HEATMAP_HUE},${HEATMAP_SAT}%,${heatmapLightness(12)}%)`,'가시 위성 많음'),legendItem('square',HEATMAP_EMPTY,'가시 위성 없음'));
   if(scenario.display.footprint){items.push(legendItem('line',FOOTPRINT_LINE,'풋프린트'),legendItem('line',GROUND_TRACK_LINE,'지상 궤적'));}
@@ -225,6 +227,7 @@ $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode')
 $('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
 $('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-shape').value;draw();});
+$('highlight-visible').addEventListener('change',()=>{scenario.display.highlightVisible=$('highlight-visible').checked;draw();});
 $('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');requestDraw();});
 $('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');requestDraw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});
