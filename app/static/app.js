@@ -10,7 +10,10 @@
     default: '/static/kleo_satellite.glb',
     compact: '/static/kleo_satellite_compact.glb',
     broadband: '/static/kleo_satellite_broadband.glb',
-    flatpanel: '/static/kleo_satellite_flatpanel.glb'
+    flatpanel: '/static/kleo_satellite_flatpanel.glb',
+    cubesat: '/static/kleo_satellite_cubesat.glb',
+    radar: '/static/kleo_satellite_radar.glb',
+    telescope: '/static/kleo_satellite_telescope.glb'
   };
   const SATELLITE_FILL = '#74b6ff', VISIBLE_OUTLINE = '#eaff83';
   const SHELL_COLORS = ['#5db8ff', '#ff9f43', '#a78bfa', '#64d6a2', '#ff6b8a', '#ffd166'];
@@ -959,7 +962,7 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
   }
 
   function selectedSatModel() {
-    return SAT_MODELS[$('satModel').value] || SAT_MODELS.default
+    return Object.hasOwn(SAT_MODELS,$('satModel').value) ? SAT_MODELS[$('satModel').value] : SAT_MODELS.default
   }
 
   function isEarthOccluded(camera, sat) {
@@ -1014,6 +1017,8 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     $('satSizeValue').textContent = sz.toFixed(2) + '×';
     $('satModel').disabled = !model;
     $('satRender').disabled = isMap2D();
+    const modelOption=$('satModel').selectedOptions?.[0];
+    $('satModelNote').textContent=isMap2D()?'2D에서는 점 마커로 표시하며, 3D로 돌아오면 선택한 모델을 복원합니다.':model?modelOption?.dataset.description||'선택한 3D 형태를 모든 위성에 적용합니다.':'점 마커 표시 중 · 3D 모델로 전환하면 선택한 형태를 적용합니다.';
     for (const [id, e] of state.satEntities) {
       e.show = !$('serviceOnly').checked || e._kleoServiceVisible === true;
       e.model.show = model;
@@ -1786,12 +1791,17 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     $('sceneMode').addEventListener('change', applySceneMode);
     $('earthOpacity').addEventListener('input', applyEarthDisplay);
     $('satSize').addEventListener('input', updateSatelliteStyles);
-    $('satRender').addEventListener('change', updateSatelliteStyles);
+    for(const id of ['satRender','satModel']){
+      try{
+        const saved=localStorage.getItem('kleo.'+id);
+        if([...$(id).options].some(option=>option.value===saved))$(id).value=saved;
+      }catch{}
+      $(id).addEventListener('change',()=>{try{localStorage.setItem('kleo.'+id,$(id).value);}catch{}updateSatelliteStyles();});
+    }
     $('serviceOnly').addEventListener('change', updateSatelliteStyles);
     try{$('highlightVisible').checked=localStorage.getItem('kleo.visibleOutline')!=='false';}catch{}
     $('highlightVisible').addEventListener('change',()=>{try{localStorage.setItem('kleo.visibleOutline',String($('highlightVisible').checked));}catch{}updateSatelliteStyles();});
     $('nextServiceSatellite').addEventListener('click', selectNextServiceSatellite);
-    $('satModel').addEventListener('change', updateSatelliteStyles);
     for (const id of ['orbitOn', 'islOn', 'accessOn', 'coverageOn']) $(id).addEventListener('change', refetchLayers);
     for (const id of ['groundTrackOn', 'footprintOn']) $(id).addEventListener('change', () => fetchSelectedGeometry(true));
     $('trackSpan').addEventListener('input', () => {

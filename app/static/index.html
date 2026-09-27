@@ -61,7 +61,8 @@
     <div class="field"><label for="earthOpacity">지구 불투명도</label><div class="range-line"><input id="earthOpacity" type="range" min="0.05" max="1" step="0.05" value="1"><span id="earthOpacityValue" class="range-value">1.00</span></div></div>
     <div class="field"><label for="satSize">위성 크기</label><div class="range-line"><input id="satSize" type="range" min="0.5" max="8" step="0.25" value="2"><span id="satSizeValue" class="range-value">2.00×</span></div></div>
     <div class="field"><label for="satRender">위성 표시 방식</label><select id="satRender"><option value="model">3D 모델</option><option value="point">점 마커</option></select></div>
-    <div class="field"><label for="satModel">위성 모델</label><select id="satModel"><option value="default">K-LEO 기본</option><option value="compact">Compact bus</option><option value="broadband">Broadband communications</option><option value="flatpanel">Flat-panel payload</option></select></div>
+    <div class="field"><label for="satModel">위성 3D 모양</label><select id="satModel" aria-describedby="satModelNote"><option value="default" data-description="중앙 본체와 양쪽 태양전지판">기본형</option><option value="compact" data-description="작은 본체와 짧은 패널">소형 버스</option><option value="broadband" data-description="넓은 패널과 통신 안테나">광대역 통신형</option><option value="flatpanel" data-description="납작한 본체와 평판 안테나">평판 통신형</option><option value="cubesat" data-description="세로형 소형 본체와 네 방향 패널">큐브샛</option><option value="radar" data-description="긴 레이더 안테나와 한쪽 태양전지판">레이더 관측형</option><option value="telescope" data-description="원통형 경통과 양쪽 패널">우주망원경형</option></select></div>
+    <p class="note" id="satModelNote">중앙 본체와 양쪽 태양전지판</p>
     <label class="check"><input id="highlightVisible" type="checkbox" checked>가시 위성 테두리 강조</label>
     <label class="check"><input id="serviceOnly" type="checkbox">서비스 가능 위성만 보기</label>
     <button id="nextServiceSatellite" type="button" disabled>다음 서비스 위성 선택</button>

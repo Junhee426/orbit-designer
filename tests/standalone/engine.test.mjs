@@ -75,6 +75,16 @@ test('visible outline preference defaults on for old scenarios and preserves an 
   delete s.display.highlightVisible;assert.equal(validateScenario(s,catalog).display.highlightVisible,true);
   for(const invalid of ['false',0,null])assert.throws(()=>validateScenario({...s,display:{...s.display,highlightVisible:invalid}},catalog));
 });
+test('3D model choices round-trip and old scenarios keep point markers',()=>{
+  const s=defaultScenario();delete s.display.satRender;delete s.display.satModel;
+  const legacy=validateScenario(s,catalog);assert.equal(legacy.display.satRender,'point');assert.equal(legacy.display.satModel,'default');
+  for(const satModel of ['default','compact','broadband','flatpanel','cubesat','radar','telescope']){
+    const display={...legacy.display,satRender:'model',satModel};
+    assert.deepEqual(importScenario(JSON.parse(JSON.stringify({...s,display})),catalog).display,display);
+  }
+  for(const satModel of ['missing','constructor','__proto__',null])assert.throws(()=>validateScenario({...s,display:{...legacy.display,satModel}},catalog));
+  assert.throws(()=>validateScenario({...s,display:{...legacy.display,satRender:'invalid'}},catalog));
+});
 test('legacy scenario imports preserve explicit coordinates and unknown versions fail',()=>{
   const v1=read('../../examples/scenario_v1_2.json');v1.configuration.stations=[{name:'User',lat_deg:1.234,lon_deg:5.678}];
   const s=importScenario(v1,catalog);assert.equal(s.custom_observers[0].lat,1.234);assert.deepEqual(s.selection.country_codes,[]);

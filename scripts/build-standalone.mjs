@@ -2,9 +2,14 @@ import { cp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { SATELLITE_MODELS } from '../standalone/satellite-models.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const app = resolve(root, 'standalone');
 await mkdir(resolve(app, 'vendor'), { recursive: true });
+await mkdir(resolve(app, 'vendor/models'), { recursive: true });
+for (const {file} of Object.values(SATELLITE_MODELS)) {
+  await cp(resolve(root, 'app/static', file), resolve(app, 'vendor/models', file));
+}
 await cp(resolve(root, 'node_modules/cesium/Build/Cesium'), resolve(app, 'vendor/cesium'), { recursive: true });
 await cp(resolve(root, 'node_modules/satellite.js/dist/satellite.es.js'), resolve(app, 'vendor/satellite.es.js'));
 await cp(resolve(root, 'node_modules/satellite.js/LICENSE.md'), resolve(app, 'vendor/satellite-LICENSE.md'));

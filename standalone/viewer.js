@@ -1,6 +1,7 @@
 import {Globe} from './rendering.js';
+import {SATELLITE_MODELS,hasSatelliteModel} from './satellite-models.js';
 import {footprint,groundTrack,orbitRing,groundTrackSurface} from './geometry.js';
-import {SAT_COLORS,SATELLITE_FILL,SATELLITE_DIAMETER,satelliteIsVisible,paintSatellite,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness} from './style.js';
+import {SAT_COLORS,SATELLITE_FILL,SATELLITE_DIAMETER,VISIBLE_OUTLINE,satelliteIsVisible,paintSatellite,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness} from './style.js';
 function shapeImage(shape,fill,outlined){
   const size=64,c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d');
   paintSatellite(ctx,shape,size/2,size/2,size/2-3,fill,outlined);
@@ -9,7 +10,7 @@ function shapeImage(shape,fill,outlined){
 export class OrbitViewer {
   constructor(container,onSelect,worldLines=[]) {
     this.container=container;this.onSelect=onSelect;this.worldLines=worldLines;this.points=new Map();this.layers=[];this.outlineEntities=[];this.selected=null;this.earthStyle='image';this.appliedEarthStyle=null;
-    this.uiMode='3d';this.markerImages=new Map();
+    this.uiMode='3d';this.markerImages=new Map();this.models=new Map();
     this.canvas=document.createElement('canvas');this.canvas.style.cssText='width:100%;height:100%;display:block;touch-action:none';this.canvas.hidden=true;
     this.fallback=new Globe(this.canvas,worldLines);
     try {
@@ -98,6 +99,9 @@ export class OrbitViewer {
     const color=css=>{let c=this.colors.get(css);if(!c){c=C.Color.fromCssColorString(css);this.colors.set(css,c);}return c;};
     const satSize=scenario.display.satSize??1,orbitWidth=scenario.display.orbitWidth??1;
     const shape=['circle','square','diamond'].includes(scenario.display.satShape)?scenario.display.satShape:'circle';
+    const useModels=scenario.display.satRender==='model'&&scenario.display.mode==='3d';
+    const modelKey=hasSatelliteModel(scenario.display.satModel)?scenario.display.satModel:'default';
+    const modelUri=new URL('vendor/models/'+SATELLITE_MODELS[modelKey].file,import.meta.url).href;
     const keep=new Set(),scratch=new C.Cartesian3();
     for(const sat of snapshot.satellites){if(!showNavigation&&sat.group!=='LEO')continue;keep.add(sat.id);let b=this.points.get(sat.id);
       if(!b){b=this.billboards.add({id:{satId:sat.id}});this.points.set(sat.id,b);}
@@ -111,7 +115,18 @@ export class OrbitViewer {
       if(!this.markerImages.has(imageKey))this.markerImages.set(imageKey,shapeImage(shape,fill,outlined));
       if(b.image!==imageKey)b.setImage(imageKey,this.markerImages.get(imageKey));
       b.color=C.Color.WHITE;
+      b.show=!useModels;
+      if(useModels){
+        let entity=this.models.get(sat.id);
+        if(!entity){entity=v.entities.add({model:{uri:modelUri,maximumScale:2500000,colorBlendMode:C.ColorBlendMode.REPLACE}});entity.satId=sat.id;this.models.set(sat.id,entity);}
+        entity.position=C.Cartesian3.clone(b.position);
+        entity.orientation=C.Transforms.headingPitchRollQuaternion(b.position,new C.HeadingPitchRoll(0,0,0));
+        entity.model.uri=modelUri;entity.model.minimumPixelSize=16*satSize;
+        entity.model.color=color(SATELLITE_FILL);entity.model.silhouetteColor=color(VISIBLE_OUTLINE);
+        entity.model.silhouetteSize=outlined?1.5:0;
+      }
     }
+    for(const [id,entity]of this.models)if(!useModels||!keep.has(id)){v.entities.remove(entity);this.models.delete(id);}
     for(const [id,b]of this.points)if(!keep.has(id)){this.billboards.remove(b);this.points.delete(id);}
     let used=0;
     const line=(positions,css,width=1)=>{

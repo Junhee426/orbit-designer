@@ -379,6 +379,11 @@ async function run() {
     assert.match(h.api.SAT_MODELS.compact, /kleo_satellite_compact\.glb$/);
     assert.match(h.api.SAT_MODELS.broadband, /kleo_satellite_broadband\.glb$/);
     assert.match(h.api.SAT_MODELS.flatpanel, /kleo_satellite_flatpanel\.glb$/);
+    for(const key of ['cubesat','radar','telescope']){
+      h.element('satModel').value=key;h.api.updateSatelliteStyles();
+      assert.equal(fake.model.uri,h.api.SAT_MODELS[key]);
+      assert.equal(fake.model.color.alpha,1);
+    }
     assert.equal(h.element('satModel').disabled, false);
     h.element('satRender').value = 'point';
     h.api.updateSatelliteStyles();

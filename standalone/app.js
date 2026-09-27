@@ -6,6 +6,7 @@ import {OrbitViewer} from './viewer.js';
 import {sortTradeCandidates} from './analysis.js';
 import {loadSession,saveSession} from './session.js';
 import {SATELLITE_FILL,VISIBLE_OUTLINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness,HEATMAP_EMPTY} from './style.js';
+import {SATELLITE_MODELS} from './satellite-models.js';
 
 const $=id=>document.getElementById(id);
 const [catalog,boundaries,worldOutline]=await Promise.all([fetch(new URL('./catalog.json',import.meta.url)).then(r=>r.json()),fetch(new URL('./boundaries.geojson',import.meta.url)).then(r=>r.json()),fetch(new URL('./world.json',import.meta.url)).then(r=>r.json())]);
@@ -25,6 +26,7 @@ const hms=t=>[Math.floor(t/3600),Math.floor(t/60)%60,Math.floor(t)%60].map(v=>St
 const error=message=>{$('error').textContent=message||'';$('error').hidden=!message;};
 const text=(id,v)=>$(id).textContent=v;
 function option(value,label){const e=document.createElement('option');e.value=value;e.textContent=label;return e;}
+for(const [key,model]of Object.entries(SATELLITE_MODELS))$('sat-model').append(option(key,model.label));
 function field(container,key,label,type='number',extra={}){
   const wrap=document.createElement('label');wrap.className='field';const span=document.createElement('span');span.textContent=label;wrap.append(span);
   const el=document.createElement(type==='select'?'select':'input');
@@ -70,6 +72,7 @@ function syncForm(){
   $('map-mode').value=scenario.display.mode;$('earth-style').value=scenario.display.earthStyle;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
   $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');
   $('highlight-visible').checked=scenario.display.highlightVisible;
+  $('sat-render').value=scenario.display.satRender;$('sat-model').value=scenario.display.satModel;
   $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');
   modeFields();
 }
@@ -165,6 +168,10 @@ function legendItem(shapeOrLine,color,label){
   return item;
 }
 function renderLegend(){
+  const modelsAvailable=scenario.display.mode==='3d'&&viewer.usingCesium;
+  const usingModels=modelsAvailable&&scenario.display.satRender==='model';
+  $('sat-render').disabled=!modelsAvailable;$('sat-model').disabled=!usingModels;$('sat-shape').disabled=usingModels;
+  text('sat-model-note',!modelsAvailable?'현재 보기에서는 점 마커로 표시합니다. 3D로 돌아오면 선택한 모델을 복원합니다.':usingModels?SATELLITE_MODELS[scenario.display.satModel].description:'3D 모델로 전환하면 일곱 가지 위성 형태를 선택할 수 있습니다.');
   const shape=scenario.display.satShape;
   const items=[legendItem(shape,SATELLITE_FILL,'모든 위성')];
   if(scenario.display.highlightVisible){const item=legendItem(shape,VISIBLE_OUTLINE,'가시 위성 테두리');item.querySelector('.mark').classList.add('outline');items.push(item);}
@@ -219,6 +226,7 @@ $('map-mode').addEventListener('change',()=>{scenario.display.mode=$('map-mode')
 $('earth-style').addEventListener('change',()=>{scenario.display.earthStyle=$('earth-style').value;draw();});
 for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListener('change',()=>{scenario.display[k]=$('show-'+k).checked;draw();});
 $('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-shape').value;draw();});
+for(const [id,key]of [['sat-render','satRender'],['sat-model','satModel']])$(id).addEventListener('change',()=>{scenario.display[key]=$(id).value;draw();});
 $('highlight-visible').addEventListener('change',()=>{scenario.display.highlightVisible=$('highlight-visible').checked;draw();});
 $('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');requestDraw();});
 $('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');requestDraw();});

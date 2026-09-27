@@ -20,7 +20,7 @@ COLORS = {
 
 
 def color(mesh, rgba):
-    mesh.visual.face_colors = np.tile(np.array(rgba, dtype=np.uint8), (len(mesh.faces), 1))
+    mesh.visual.vertex_colors = np.tile(np.array(rgba, dtype=np.uint8), (len(mesh.vertices), 1))
     return mesh
 
 
@@ -98,7 +98,43 @@ def flatpanel():
     export_scene('kleo_satellite_flatpanel.glb',g)
 
 
+def cubesat():
+    """A tall CubeSat bus with four short deployable panels."""
+    g = [('bus', box([0.75, 0.75, 1.6]))]
+    for side in [-1, 1]:
+        g.append((f'panel_x_{side}', box([0.95, 0.08, 0.8], [side * 0.88, 0, 0])))
+        g.append((f'panel_y_{side}', box([0.08, 0.95, 0.8], [0, side * 0.88, 0])))
+        g.append((f'antenna_{side}', cyl(0.035, 0.6, [side * 0.25, 0, 1.05], sections=12)))
+    export_scene('kleo_satellite_cubesat.glb', g)
+
+
+def radar():
+    """Long rectangular radar aperture and a single solar wing."""
+    g = [('bus', box([1.0, 1.0, 1.2])),
+         ('radar_array', box([4.8, 0.18, 1.05], [0, 0.85, 0])),
+         ('solar_wing', box([1.3, 2.2, 0.08], [0, -1.6, 0])),
+         ('array_support_left', box([0.12, 0.5, 0.12], [-0.35, 0.6, 0])),
+         ('array_support_right', box([0.12, 0.5, 0.12], [0.35, 0.6, 0])),
+         ('solar_support', box([0.12, 0.6, 0.12], [0, -0.7, 0]))]
+    export_scene('kleo_satellite_radar.glb', g)
+
+
+def telescope():
+    """Cylindrical telescope with an open hood and two solar wings."""
+    hood = trimesh.creation.annulus(r_min=0.58, r_max=0.72, height=0.6, sections=24)
+    hood.apply_translation([0, 0, 1.2])
+    g = [('tube', cyl(0.65, 1.8, sections=24)), ('hood', color(hood, COLORS['bus'])),
+         ('rear_bus', box([1.0, 1.0, 0.5], [0, 0, -1.05])),
+         ('panel_left', box([1.5, 0.08, 1.1], [-1.55, 0, -0.3])),
+         ('panel_right', box([1.5, 0.08, 1.1], [1.55, 0, -0.3])),
+         ('panel_support', box([2.0, 0.12, 0.12], [0, 0, -0.3]))]
+    export_scene('kleo_satellite_telescope.glb', g)
+
+
 if __name__ == '__main__':
     compact_bus()
     broadband()
     flatpanel()
+    cubesat()
+    radar()
+    telescope()

@@ -1,9 +1,10 @@
 import { DEFAULT_CONFIG, validateConfig, buildConstellations, MODEL_VERSION } from './engine.js';
+import {hasSatelliteModel} from './satellite-models.js';
 export const SCHEMA_VERSION = 'kleo.integrated.v2';
 export function defaultScenario() {
   return { schema_version:SCHEMA_VERSION, name:'K-LEO 한국 통신망', configuration:structuredClone(DEFAULT_CONFIG),
     selection:{country_codes:['KOR'],cities_per_country:3}, custom_observers:[],
-    analysis:{duration_min:1440,step_sec:300}, display:{mode:'3d',earthStyle:'image',orbits:true,isl:false,heatmap:false,footprint:true,time_sec:0,selected_satellite:null,domain:'commNav',satShape:'circle',satSize:1,orbitWidth:1,highlightVisible:true}, active_observer:'KOR:0' };
+    analysis:{duration_min:1440,step_sec:300}, display:{mode:'3d',earthStyle:'image',orbits:true,isl:false,heatmap:false,footprint:true,time_sec:0,selected_satellite:null,domain:'commNav',satShape:'circle',satRender:'point',satModel:'default',satSize:1,orbitWidth:1,highlightVisible:true}, active_observer:'KOR:0' };
 }
 function object(value,label) { if(!value || typeof value!=='object' || Array.isArray(value)) throw Error(label+' 형식을 확인해 주세요.'); }
 function keys(value,allowed,label) {object(value,label);if(Object.keys(value).some(k=>!allowed.includes(k))) throw Error(label+'에 알 수 없는 항목이 있습니다.');}
@@ -36,9 +37,12 @@ export function validateScenario(input,catalog) {
   const samples=sampleTimes(s.analysis.duration_min,s.analysis.step_sec);
   const count=buildConstellations(s.configuration).length;
   if(samples.length>3001||samples.length*count*observers.length>30_000_000) throw Error('분석량 한도 초과: 시간 간격을 늘리거나 위성·관측지를 줄여 주세요.');
-  keys(s.display,['mode','earthStyle','orbits','isl','heatmap','footprint','time_sec','selected_satellite','domain','satShape','satSize','orbitWidth','highlightVisible'],'표시');
+  keys(s.display,['mode','earthStyle','orbits','isl','heatmap','footprint','time_sec','selected_satellite','domain','satShape','satRender','satModel','satSize','orbitWidth','highlightVisible'],'표시');
   s.display.earthStyle??='image';s.display.time_sec??=0;s.display.selected_satellite??=null;s.display.domain??='commNav';
   s.display.satShape??='circle';s.display.satSize??=1;s.display.orbitWidth??=1;
+  if(s.display.satRender===undefined)s.display.satRender='point';
+  if(s.display.satModel===undefined)s.display.satModel='default';
+  if(!['point','model'].includes(s.display.satRender)||!hasSatelliteModel(s.display.satModel))throw Error('위성 표시 방식 또는 3D 모양을 확인해 주세요.');
   if(s.display.highlightVisible===undefined)s.display.highlightVisible=true;
   if(typeof s.display.highlightVisible!=='boolean')throw Error('가시 위성 테두리 강조 설정을 확인해 주세요.');
   s.display.mode={'3D':'3d','2D':'2d'}[s.display.mode]??s.display.mode;

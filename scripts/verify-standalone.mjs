@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SATELLITE_MODELS } from '../standalone/satellite-models.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const publish = resolve(root, 'standalone');
@@ -26,6 +27,7 @@ const required = [
   'vendor/cesium/Workers', 'vendor/cesium/Assets', 'vendor/cesium/ThirdParty',
 ];
 for (const name of required) await checkPath(resolve(publish, name));
+for (const {file} of Object.values(SATELLITE_MODELS)) await checkPath(resolve(publish, 'vendor/models', file));
 let references = 0;
 for (const name of await readdir(publish)) {
   if (!/\.(?:html|js|css)$/.test(name)) continue;

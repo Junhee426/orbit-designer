@@ -27,6 +27,9 @@ def test_satellite_glb_variants_are_valid_scenes():
         "kleo_satellite_compact.glb",
         "kleo_satellite_broadband.glb",
         "kleo_satellite_flatpanel.glb",
+        "kleo_satellite_cubesat.glb",
+        "kleo_satellite_radar.glb",
+        "kleo_satellite_telescope.glb",
     ]
     for name in names:
         scene = trimesh.load(STATIC / name, force="scene")
