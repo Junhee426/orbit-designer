@@ -13,6 +13,6 @@
     "test:render-ui": "playwright test --config tests/render-site.config.mjs"
   },
   "engines": { "node": ">=24 <25" },
-  "dependencies": { "cesium": "1.144.0", "satellite.js": "6.0.1" },
+  "dependencies": { "cesium": "1.144.0", "satellite.js": "6.0.2" },
   "devDependencies": { "@playwright/test": "1.61.1" }
 }

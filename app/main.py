@@ -45,6 +45,62 @@ app = FastAPI(
     version=APP_VERSION,
     description="Render-ready LEO satellite communications constellation design service.",
 )
+
+
+class RequestBodyLimit:
+    """Refuse request bodies over the limit before FastAPI buffers and parses them.
+
+    Without this, one oversized JSON POST is read fully into memory ahead of validation. The
+    body (at most the limit) is buffered here and replayed, so chunked uploads without a
+    Content-Length are bounded too.
+    """
+
+    def __init__(self, app, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] in ("GET", "HEAD", "OPTIONS"):
+            await self.app(scope, receive, send)
+            return
+        declared = next((value for name, value in scope["headers"] if name == b"content-length"), None)
+        if declared is not None and declared.isdigit() and int(declared) > self.max_bytes:
+            await self._reject(send)
+            return
+        chunks, size, pending = [], 0, None
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                pending = message
+                break
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > self.max_bytes:
+                await self._reject(send)
+                return
+            chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return pending or {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+    async def _reject(self, send):
+        body = json.dumps({"detail": f"Request body exceeds the server limit of {self.max_bytes:,} bytes."}).encode()
+        await send({"type": "http.response.start", "status": 413, "headers": [
+            (b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()), (b"connection", b"close")]})
+        await send({"type": "http.response.body", "body": body})
+
+
+# Added first so it runs inside the header middleware below and 413 responses carry the same headers.
+app.add_middleware(RequestBodyLimit, max_bytes=SETTINGS.max_request_bytes)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
@@ -482,6 +538,7 @@ def server_info():
             "max_heatmap_points": SETTINGS.max_heatmap_points,
             "max_sim_samples": SETTINGS.max_sim_samples,
             "max_trade_cases": SETTINGS.max_trade_cases,
+            "max_request_bytes": SETTINGS.max_request_bytes,
         },
         # NOTE: these counters live in this worker process's memory only. With
         # WEB_CONCURRENCY/RENDER_WEB_CONCURRENCY > 1, a load balancer or proxy

@@ -14,7 +14,7 @@ test('seven 3D models load, retain uniform styling and restore after 2D and relo
   await page.locator('#sat-render').selectOption('model');await page.locator('#sat-size').fill('3');
   const models=()=>page.evaluate(()=>{
     const out=[];
-    const visit=collection=>{for(let i=0;i<(collection?.length??0);i++){const p=collection.get(i);if(p instanceof Cesium.Model)out.push({ready:p.ready,color:p.color.toCssHexString(),alpha:p.color.alpha,size:p.minimumPixelSize,outline:p.silhouetteSize,uri:p._resource?.url});else if(p instanceof Cesium.PrimitiveCollection)visit(p);}};
+    const visit=collection=>{for(let i=0;i<(collection?.length??0);i++){const p=collection.get(i);if(p instanceof Cesium.Model)out.push({ready:p.ready,color:p.color?.toCssHexString(),alpha:p.color?.alpha,size:p.minimumPixelSize,outline:p.silhouetteSize,uri:p._resource?.url});else if(p instanceof Cesium.PrimitiveCollection)visit(p);}};
     visit(window.modelScene?.primitives);return out;
   });
   for(const [key,{file}]of Object.entries(SATELLITE_MODELS)){
