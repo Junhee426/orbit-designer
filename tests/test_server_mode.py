@@ -129,3 +129,24 @@ def test_robots_disallows_indexing():
     r = client.get("/robots.txt")
     assert r.status_code == 200
     assert "Disallow: /" in r.text
+
+
+def test_oversized_request_bodies_are_rejected_before_parsing():
+    limit = main.SETTINGS.max_request_bytes
+    padding = "x" * (limit + 1)
+    declared = client.post("/api/tle/parse", content=f'{{"tle_text":"{padding}"}}', headers={"content-type": "application/json"})
+    assert declared.status_code == 413
+    assert "server limit" in declared.json()["detail"]
+    assert declared.headers["x-content-type-options"] == "nosniff"
+    # A chunked upload has no Content-Length and is cut off while streaming.
+    body = f'{{"tle_text":"{padding}"}}'.encode()
+    streamed = client.post("/api/tle/parse", content=iter([body[:limit // 2], body[limit // 2:]]), headers={"content-type": "application/json"})
+    assert streamed.status_code == 413
+    # Bodies within the limit still reach validation, streamed or not.
+    small = client.post("/api/tle/parse", content=iter([b'{"tle_text":', b'"not a TLE"}']), headers={"content-type": "application/json"})
+    assert small.status_code == 400
+
+
+def test_request_limit_covers_the_largest_tle_upload():
+    assert main.SETTINGS.max_request_bytes >= 4 * main.SETTINGS.max_tle_chars
+    assert client.get("/api/server-info").json()["limits"]["max_request_bytes"] == main.SETTINGS.max_request_bytes

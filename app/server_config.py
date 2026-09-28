@@ -64,6 +64,7 @@ class ServerSettings:
     max_sim_work: int
     max_trade_work: int
     max_tle_chars: int
+    max_request_bytes: int
     static_cache_seconds: int
     expose_server_info: bool
 
@@ -75,6 +76,7 @@ class ServerSettings:
         # divided across the worker count to keep the *total* concurrent-job limit intact.
         workers = worker_count()
         max_concurrent_jobs_per_worker = max(1, -(-max_concurrent_jobs // workers))
+        max_tle_chars = _env_int("KLEO_MAX_TLE_CHARS", 200_000)
         return cls(
             mode=mode,
             max_concurrent_jobs=max_concurrent_jobs,
@@ -89,7 +91,10 @@ class ServerSettings:
             max_snapshot_work=_env_int("KLEO_MAX_SNAPSHOT_WORK", 20_000_000),
             max_sim_work=_env_int("KLEO_MAX_SIM_WORK", 20_000_000),
             max_trade_work=_env_int("KLEO_MAX_TRADE_WORK", 30_000_000),
-            max_tle_chars=_env_int("KLEO_MAX_TLE_CHARS", 200_000),
+            max_tle_chars=max_tle_chars,
+            # The largest legitimate body is a TLE upload plus stations and areas; allow 4x the TLE limit
+            # for JSON escaping, and never less than 1 MiB.
+            max_request_bytes=_env_int("KLEO_MAX_REQUEST_BYTES", max(1_048_576, 4 * max_tle_chars)),
             static_cache_seconds=_env_int("KLEO_STATIC_CACHE_SECONDS", 86_400, minimum=0),
             expose_server_info=_env_bool("KLEO_EXPOSE_SERVER_INFO", True),
         )

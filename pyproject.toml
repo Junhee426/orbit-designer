@@ -20,8 +20,9 @@ kleo-bootstrap-assets = "scripts.bootstrap_cesium:main"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28,<1.0",
-    "pytest>=8.4,<9.0",
+    # Starlette 1.7 uses httpx2 for its TestClient (plain httpx is deprecated there).
+    "httpx2>=2.13,<3.0",
+    "pytest>=8.4,<10.0",
     "trimesh>=4.7,<5.0",
 ]
 

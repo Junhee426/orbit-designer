@@ -106,7 +106,7 @@ KLEO_MAX_STATIONS=64
 KLEO_MAX_CONCURRENT_JOBS=2
 ```
 
-이미 설정된 `KLEO_MAX_STATIONS=24`는 소스 변경만으로 덮어쓰지 않습니다. Render의 기존 환경변수도 별도로 조정해야 합니다. 동시 계산 제한은 **프로세스별**이므로 WEB_CONCURRENCY가 늘면 전체 동시 계산 수도 늘어납니다. 계산이 꽉 차면 HTTP 503과 Retry-After 헤더를 반환합니다. 위성 수·지점 수·표본 수에 따른 기존 작업량 제한도 유지합니다.
+이미 설정된 `KLEO_MAX_STATIONS=24`는 소스 변경만으로 덮어쓰지 않습니다. Render의 기존 환경변수도 별도로 조정해야 합니다. 동시 계산 제한은 **프로세스별**이므로 WEB_CONCURRENCY가 늘면 전체 동시 계산 수도 늘어납니다. 계산이 꽉 차면 HTTP 503과 Retry-After 헤더를 반환합니다. 위성 수·지점 수·표본 수에 따른 기존 작업량 제한도 유지합니다. POST 본문은 파싱 전에 `KLEO_MAX_REQUEST_BYTES`(기본 1 MiB 또는 `KLEO_MAX_TLE_CHARS`의 4배 중 큰 값)로 제한하며, `Content-Length`가 없는 분할 전송도 초과 즉시 HTTP 413으로 거부합니다.
 
 `/api/simulate`는 기본적으로 모든 지상 지점 쌍의 순간 경로 계산을 생략합니다. 필요한 경우 `include_routes: true`를 지정합니다. 경로 계산은 위성 간 그래프와 출발 지점별 탐색을 재사용하며, 예상 경로 계산량도 `KLEO_MAX_SIM_WORK` 제한에 합산합니다. 이는 분석 전체 기간의 네트워크 가용률 계산과 별개입니다.
 
