@@ -1,6 +1,6 @@
 import { EARTH_RADIUS, observerFrame, geodeticPosition } from './engine.js';
 import { footprint, groundTrack, orbitRing, groundTrackSurface } from './geometry.js';
-import { SAT_COLORS, SATELLITE_FILL, SATELLITE_DIAMETER, satelliteIsVisible, paintSatellite, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, withAlpha } from './style.js';
+import { SAT_COLORS, SATELLITE_FILL, SATELLITE_DIAMETER, satelliteIsVisible, paintSatellite, ORBIT_LINE, SELECTED_ORBIT_LINE, ISL_LINE, FOOTPRINT_LINE, GROUND_TRACK_LINE, HEATMAP_EMPTY, HEATMAP_HUE, HEATMAP_SAT, heatmapLightness, withAlpha } from './style.js';
 const NS = 'http://www.w3.org/2000/svg';
 const TWO_PI = Math.PI * 2;
 const wrapLongitude = lon => ((lon + 180) % 360 + 360) % 360 - 180;
@@ -24,7 +24,7 @@ export class Globe {
     img.onload = () => {
       const off = document.createElement('canvas'); off.width = img.width; off.height = img.height;
       const c = off.getContext('2d', { willReadFrequently: true }); c.drawImage(img, 0, 0);
-      this.texture = { width: img.width, height: img.height, data: c.getImageData(0, 0, img.width, img.height).data };
+      this.texture = { width: img.width, height: img.height, canvas: off, data: c.getImageData(0, 0, img.width, img.height).data };
       this.cached = null; this.draw();
     };
     img.src = './earth.jpg';
@@ -91,13 +91,15 @@ export class Globe {
       const worldY = frame.east[1] * ex + frame.north[1] * ny + frame.up[1] * uz;
       const worldZ = frame.east[2] * ex + frame.north[2] * ny + frame.up[2] * uz;
       const lon = Math.atan2(worldY, worldX), lat = Math.asin(Math.max(-1, Math.min(1, worldZ)));
-      const light = .42 + .58 * uz;
+      // A soft, view-relative highlight gives volume; it is not a solar terminator.
+      const light = .38 + .62 * Math.max(0, -.32 * ex + .38 * ny + .87 * uz), rim = (1 - uz) ** 3;
       if (tex) {
         const tx = Math.min(tex.width - 1, Math.floor((lon / TWO_PI + .5) * tex.width));
         const ty = Math.min(tex.height - 1, Math.max(0, Math.floor((.5 - lat / Math.PI) * tex.height)));
         const offset = (ty * tex.width + tx) * 4;
         d[index] = tex.data[offset] * light; d[index + 1] = tex.data[offset + 1] * light; d[index + 2] = tex.data[offset + 2] * light;
       } else { d[index] = 20 * light; d[index + 1] = 75 * light; d[index + 2] = 120 * light; }
+      d[index] += 7 * rim; d[index + 1] += 28 * rim; d[index + 2] += 47 * rim;
       d[index + 3] = Math.min(255, (1 - dist) * size * 180);
     }
     context.putImageData(pixels, 0, 0); this.cached = { key, canvas: off }; return off;
@@ -154,14 +156,11 @@ export class Globe {
       }
     };
     const surface = geodeticPosition;
-    if (this.showOrbits) {
-      const orbitPlanes = new Map();
-      shown.forEach(o => { const key = o.satrec ? o.id : o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
-      for (const o of orbitPlanes.values()) {
-        const color = o.group === 'LEO' ? 'rgba(72,212,240,.20)' : o.group === 'GNSS' ? 'rgba(246,183,91,.25)' : 'rgba(193,160,255,.26)';
-        const positions = o.satrec ? groundTrack(o, this.snapshot.minutes) : orbitRing(o, this.snapshot.minutes, 121);
-        stroke(positions, color, .65 * this.orbitWidth);
-      }
+    if(map&&this.earthStyle==='image'&&this.texture?.canvas){
+      const left=(w-mapWidth)/2-this.mapCenter.lon/360*mapWidth,top=(h-mapHeight)/2+this.mapCenter.lat/180*mapHeight;
+      ctx.save();ctx.globalAlpha=.62;
+      for(const offset of [-mapWidth,0,mapWidth])ctx.drawImage(this.texture.canvas,left+offset,top,mapWidth,mapHeight);
+      ctx.restore();
     }
     if (!map && this.earthStyle === 'image') {
       const gradient = ctx.createRadialGradient(cx, cy, radius * .96, cx, cy, radius * 1.09);
@@ -175,6 +174,18 @@ export class Globe {
       for(let lon=-180;lon<180;lon+=30)stroke(Array.from({length:61},(_,i)=>surface(-90+i*3,lon)),'#203f55',.7);
       for(const outline of this.worldLines)stroke(outline.map(([lat,lon])=>surface(lat,lon)),'#5f8aa3',.9);
     }
+    // Draw visible orbital arcs above the globe, with the same Earth occlusion as markers.
+    // Drawing them before the texture hid front-facing arcs inside the Earth's disc.
+    if (this.showOrbits) {
+      const orbitPlanes = new Map();
+      shown.forEach(o => { const key = o.satrec ? o.id : o.group + ':' + o.raan.toFixed(6) + ':' + o.inclination.toFixed(6); if (!orbitPlanes.has(key)) orbitPlanes.set(key, o); });
+      for (const o of orbitPlanes.values()) {
+        const positions = o.satrec ? groundTrack(o, this.snapshot.minutes) : orbitRing(o, this.snapshot.minutes, 121);
+        stroke(positions, ORBIT_LINE, 1.15 * this.orbitWidth);
+      }
+      const selectedOrbit=shown.find(o=>o.id===this.selectedId);
+      if(selectedOrbit)stroke(selectedOrbit.satrec?groundTrack(selectedOrbit,this.snapshot.minutes):orbitRing(selectedOrbit,this.snapshot.minutes,129),SELECTED_ORBIT_LINE,Math.max(1.75,this.orbitWidth*1.65));
+    }
     if (this.showHeatmap) {
       for (const cell of this.cells) {
         const corners = [[cell.south,cell.west],[cell.south,cell.east],[cell.north,cell.east],[cell.north,cell.west]].map(([la,lo]) => project(surface(la, lo)));
@@ -185,9 +196,9 @@ export class Globe {
     }
     if (map) {
       ctx.font = '11px system-ui'; ctx.fillStyle = '#7793ae'; ctx.textAlign = 'center';
-      for (let lon = -180; lon <= 180; lon += 60) { const p = project(surface(0, lon)); ctx.fillText(lon + '°', p.x, h - 6); }
+      for (let lon = -180; lon < 180; lon += 60) { const p = project(surface(0, lon)); ctx.fillText(lon===0?'0°':Math.abs(lon)+'°'+(lon<0?'W':'E'), p.x, h - 6); }
       ctx.textAlign = 'left';
-      for (let lat = -60; lat <= 60; lat += 30) { const p = project(surface(lat, -180)); ctx.fillText(lat + '°', p.x + 3, p.y - 4); }
+      for (let lat = -60; lat <= 60; lat += 30) { const p = project(surface(lat, -180)); ctx.fillText(lat===0?'0°':Math.abs(lat)+'°'+(lat<0?'S':'N'), Math.max(10,w/2-mapWidth/2+3), p.y - 4); }
     }
     const obs = project(this.snapshot.observer);
     if (map || obs.z >= 0) {
@@ -213,14 +224,15 @@ export class Globe {
       const chosen = sat.id === this.snapshot.best?.id;
       const fill = SATELLITE_FILL;
       paintSatellite(ctx, this.satShape, q.x, q.y, SATELLITE_DIAMETER / 2 * this.satSize, fill, this.highlightVisible && satelliteIsVisible(sat, this.full));
-      if (chosen) {
-        ctx.globalAlpha = 1; ctx.font = '13px system-ui'; ctx.fillStyle = '#ffe0ae';
-        ctx.fillText(sat.id, Math.min(w - 42, Math.max(5, q.x + 9)), Math.max(16, q.y - 5));
+      if (chosen || sat.id === this.selectedId) {
+        ctx.globalAlpha = 1; ctx.font = '600 12px system-ui';ctx.fillStyle = sat.id===this.selectedId?SELECTED_ORBIT_LINE:'#ffe0ae';
+        const labelX=Math.min(w-42,Math.max(5,q.x+10)),labelY=Math.max(16,q.y-8);
+        ctx.strokeStyle='#060d18';ctx.lineWidth=3;ctx.strokeText(sat.id,labelX,labelY);ctx.fillText(sat.id,labelX,labelY);
       }
     }
     ctx.globalAlpha = 1;
     if (this.selectedId) {
-      const selSat = this.snapshot.satellites.find(s => s.id === this.selectedId), selOrbit = this.orbits.find(o => o.id === this.selectedId);
+      const selSat = this.snapshot.satellites.find(s => s.id === this.selectedId && (this.full || s.group === 'LEO')), selOrbit = selSat ? this.orbits.find(o => o.id === this.selectedId) : null;
       if (this.showFootprint && selSat) {
         const positions = footprint(selSat.position, this.commElevation).map(([lon, lat]) => surface(lat, lon));
         const ring = positions.map(project);

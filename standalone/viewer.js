@@ -1,7 +1,7 @@
 import {Globe} from './rendering.js';
 import {SATELLITE_MODELS,hasSatelliteModel} from './satellite-models.js';
 import {footprint,groundTrack,orbitRing,groundTrackSurface} from './geometry.js';
-import {SAT_COLORS,SATELLITE_FILL,SATELLITE_DIAMETER,VISIBLE_OUTLINE,satelliteIsVisible,paintSatellite,ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness} from './style.js';
+import {SAT_COLORS,SATELLITE_FILL,SATELLITE_DIAMETER,VISIBLE_OUTLINE,satelliteIsVisible,paintSatellite,ORBIT_LINE,SELECTED_ORBIT_LINE,ISL_LINE,FOOTPRINT_LINE,GROUND_TRACK_LINE,HEATMAP_EMPTY,HEATMAP_HUE,HEATMAP_SAT,heatmapLightness} from './style.js';
 function shapeImage(shape,fill,outlined){
   const size=64,c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d');
   paintSatellite(ctx,shape,size/2,size/2,size/2-3,fill,outlined);
@@ -18,16 +18,20 @@ export class OrbitViewer {
       this.cesiumContainer=document.createElement('div');this.cesiumContainer.style.cssText='width:100%;height:100%';
       container.append(this.cesiumContainer,this.canvas);
       C.Ion.defaultAccessToken='';
-      this.viewer=new C.Viewer(this.cesiumContainer,{baseLayer:false,baseLayerPicker:false,geocoder:false,animation:false,timeline:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,skyBox:false,skyAtmosphere:false,requestRenderMode:true,maximumRenderTimeChange:Infinity});
+      this.viewer=new C.Viewer(this.cesiumContainer,{baseLayer:false,baseLayerPicker:false,geocoder:false,animation:false,timeline:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,skyBox:false,requestRenderMode:true,maximumRenderTimeChange:Infinity});
       this.viewer.scene.globe.baseColor=C.Color.fromCssColorString('#12304a');
-      this.viewer.scene.backgroundColor=C.Color.fromCssColorString('#081322');
+      this.viewer.scene.backgroundColor=C.Color.fromCssColorString('#060d18');
       this.viewer.scene.globe.enableLighting=false;
+      // Static atmosphere adds depth without implying a solar/time-of-day model.
+      this.viewer.scene.globe.dynamicAtmosphereLighting=false;
+      if(this.viewer.scene.skyAtmosphere){this.viewer.scene.skyAtmosphere.atmosphereLightIntensity=28;this.viewer.scene.skyAtmosphere.brightnessShift=-.08;}
       // Satellites and lines change on every time step. Primitive collections update them in place;
       // entities rebuilt their geometry (asynchronously, in workers) on each draw.
       this.lines=this.viewer.scene.primitives.add(new C.PolylineCollection());
       this.billboards=this.viewer.scene.primitives.add(new C.BillboardCollection());
+      this.selectedLabel=this.viewer.entities.add({show:false,label:{text:'',font:'600 12px sans-serif',fillColor:C.Color.fromCssColorString(SELECTED_ORBIT_LINE),style:C.LabelStyle.FILL_AND_OUTLINE,outlineColor:C.Color.fromCssColorString('#060d18'),outlineWidth:3,pixelOffset:new C.Cartesian2(12,-14),horizontalOrigin:C.HorizontalOrigin.LEFT,showBackground:true,backgroundColor:C.Color.fromCssColorString('#0a1828').withAlpha(.82),backgroundPadding:new C.Cartesian2(7,4)}});
       this.colors=new Map();this.observerKey='';this.observerEntities=[];
-      C.SingleTileImageryProvider.fromUrl(new URL('./earth.jpg',import.meta.url).href).then(p=>{this.imageryLayer=this.viewer.imageryLayers.addImageryProvider(p);this.applyEarthStyle(this.earthStyle,true);}).catch(()=>{});
+      C.SingleTileImageryProvider.fromUrl(new URL('./earth.jpg',import.meta.url).href).then(p=>{this.imageryLayer=this.viewer.imageryLayers.addImageryProvider(p);this.imageryLayer.brightness=.92;this.imageryLayer.contrast=1.12;this.imageryLayer.saturation=.86;this.applyEarthStyle(this.earthStyle,true);}).catch(()=>{});
       this.viewer.screenSpaceEventHandler.setInputAction(click=>{const p=this.viewer.scene.pick(click.position);if(p?.id?.satId)this.onSelect(p.id.satId);},C.ScreenSpaceEventType.LEFT_CLICK);
       this.center(127,36);
     } catch(error) {
@@ -75,6 +79,8 @@ export class OrbitViewer {
     const outline=this.earthStyle==='outline';if(outline)this.ensureEarthOutline();
     if(this.imageryLayer)this.imageryLayer.show=!outline;
     this.viewer.scene.globe.baseColor=this.C.Color.fromCssColorString(outline?'#091a28':'#12304a');
+    this.viewer.scene.globe.showGroundAtmosphere=!outline;
+    if(this.viewer.scene.skyAtmosphere)this.viewer.scene.skyAtmosphere.show=!outline;
     for(const entity of this.outlineEntities)entity.show=outline;
     this.appliedEarthStyle=this.earthStyle;
     this.viewer.scene.requestRender();
@@ -143,15 +149,20 @@ export class OrbitViewer {
     }
     if(snapshot.best)line([snapshot.observer,snapshot.best.position],SAT_COLORS.best,2);
     if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:`${o.group}:${o.raan}:${o.inclination}`;if(seen.has(key))continue;seen.add(key);
-      if(o.satrec){line(groundTrack(o,snapshot.minutes),ORBIT_LINE,orbitWidth);continue;}
-      line(orbitRing(o,snapshot.minutes,65),ORBIT_LINE,orbitWidth);
+      if(o.satrec){line(groundTrack(o,snapshot.minutes),ORBIT_LINE,1.15*orbitWidth);continue;}
+      line(orbitRing(o,snapshot.minutes,97),ORBIT_LINE,1.15*orbitWidth);
     }}
     const byId=new Map(snapshot.satellites.map(s=>[s.id,s]));
     if(scenario.display.isl)for(const e of edges)line([byId.get(e.a).position,byId.get(e.b).position],ISL_LINE);
     if(scenario.display.heatmap)for(const cell of cells)add({rectangle:{coordinates:C.Rectangle.fromDegrees(cell.west,cell.south,cell.east,cell.north),height:1000,material:(cell.count?C.Color.fromHsl(HEATMAP_HUE/360,HEATMAP_SAT/100,heatmapLightness(cell.count)/100):C.Color.fromCssColorString(HEATMAP_EMPTY)).withAlpha(.55)}});
-    const selected=byId.get(selectedId),orbit=orbits.find(o=>o.id===selectedId);
+    const selected=keep.has(selectedId)?byId.get(selectedId):null,orbit=selected?orbits.find(o=>o.id===selectedId):null;
+    this.selectedLabel.show=!!selected;
+    if(selected){this.selectedLabel.position=xyz(selected.position);this.selectedLabel.label.text=selected.id;this.selectedLabel.satId=selected.id;}
     if(selected&&scenario.display.footprint){const coords=footprint(selected.position,scenario.configuration.commElevation).flat();if(coords.length)add({polyline:{positions:C.Cartesian3.fromDegreesArray(coords),width:2,material:C.Color.fromCssColorString(FOOTPRINT_LINE)}});}
-    if(orbit&&selected){line(groundTrackSurface(orbit,snapshot.minutes),GROUND_TRACK_LINE,2);}
+    if(orbit&&selected){
+      if(scenario.display.orbits)line(orbit.satrec?groundTrack(orbit,snapshot.minutes):orbitRing(orbit,snapshot.minutes,129),SELECTED_ORBIT_LINE,Math.max(1.75,orbitWidth*1.65));
+      line(groundTrackSurface(orbit,snapshot.minutes),GROUND_TRACK_LINE,2);
+    }
     // Release lines a layer no longer needs (e.g. ISL switched off) instead of keeping them hidden.
     // Collect first: length/get() compact the collection after each remove().
     const surplus=[];for(let i=used;i<this.lines.length;i++)surplus.push(this.lines.get(i));

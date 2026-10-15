@@ -7,7 +7,7 @@ test('satellite markers keep equal size and alpha with optional visible outlines
   await expect(page.locator('#highlight-visible')).toBeChecked();
   await page.evaluate(()=>{
     const original=Cesium.BillboardCollection.prototype.update;
-    Cesium.BillboardCollection.prototype.update=function(state){if(this.length&&this.get(0).id?.satId)window.satelliteBillboards=this;return original.call(this,state);};
+    Cesium.BillboardCollection.prototype.update=function(state){const first=this.length&&this.get(0);if(first?.id?.satId&&typeof first.image==='string'&&/^(circle|square|diamond):#/.test(first.image))window.satelliteBillboards=this;return original.call(this,state);};
   });
   const markers=()=>page.evaluate(()=>{
     const collection=window.satelliteBillboards;
@@ -247,7 +247,14 @@ test('zoom buttons change every map mode without changing simulation state',asyn
   await page.goto('/');await expect(page.locator('#status')).toContainText('준비 완료');
   await page.locator('#satellite').selectOption({index:1});
   const selected=await page.locator('#satellite').inputValue();
-  await page.evaluate(()=>{
+  await page.evaluate(async()=>{
+    const {Globe}=await import('/rendering.js'),originalGlobeZoom=Globe.prototype.zoom;
+    window.canvasZoomSamples=[];
+    Globe.prototype.zoom=function(factor){
+      const before=this.zoomLevel;
+      originalGlobeZoom.call(this,factor);
+      window.canvasZoomSamples.push([before,this.zoomLevel]);
+    };
     const original=Cesium.Camera.prototype.zoomIn;
     window.zoomSamples=[];
     Cesium.Camera.prototype.zoomIn=function(amount){
@@ -270,9 +277,15 @@ test('zoom buttons change every map mode without changing simulation state',asyn
     const canvas=page.locator('#globe > canvas');
     const before=await canvas.evaluate(c=>c.toDataURL());
     await page.locator('#zoom-in').click();
-    expect(await canvas.evaluate(c=>c.toDataURL())).not.toBe(before);
+    const zoomed=await canvas.evaluate(c=>c.toDataURL());
+    expect(zoomed===before).toBe(false);
+    const closer=await page.evaluate(()=>window.canvasZoomSamples.at(-1));
+    expect(closer[1]).toBeGreaterThan(closer[0]);
     await page.locator('#zoom-out').click();
-    expect(await canvas.evaluate(c=>c.toDataURL())).toBe(before);
+    expect(await canvas.evaluate((c,image)=>c.toDataURL()===image,zoomed)).toBe(false);
+    const farther=await page.evaluate(()=>window.canvasZoomSamples.at(-1));
+    expect(farther[1]).toBeLessThan(farther[0]);
+    expect(farther[1]).toBeCloseTo(closer[0]);
   }
   await expect(page.locator('#satellite')).toHaveValue(selected);
   await expect(page.locator('#time')).toHaveValue('0');

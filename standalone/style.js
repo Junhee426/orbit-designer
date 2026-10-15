@@ -23,6 +23,7 @@ export function paintSatellite(ctx, shape, x, y, radius, fill, outlined) {
   ctx.restore();
 }
 export const ORBIT_LINE = '#344f6a';
+export const SELECTED_ORBIT_LINE = '#dcecff';
 export const ISL_LINE = '#36685f';
 export const FOOTPRINT_LINE = '#84e5df';
 export const GROUND_TRACK_LINE = '#e8db91';
