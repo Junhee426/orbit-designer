@@ -73,6 +73,7 @@ function syncForm(){
   $('map-mode').value=scenario.display.mode;$('earth-style').value=scenario.display.earthStyle;for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).checked=scenario.display[k];
   $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');
   $('highlight-visible').checked=scenario.display.highlightVisible;
+  $('show-satellite-labels').checked=scenario.display.satelliteLabels;
   $('sat-render').value=scenario.display.satRender;$('sat-model').value=scenario.display.satModel;
   $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');
   modeFields();
@@ -119,6 +120,7 @@ function renderLiveVisuals(snapshot,observer){
   text('scene-observer',observer.name);text('scene-clock','T + '+hms(seconds));text('scene-link-state',pass?'● 통신 목표 충족':snapshot.commVisible?'● 목표 미충족':'● 가시 위성 없음');$('scene-link-state').dataset.state=pass?'connected':'unavailable';
   text('scene-interaction-hint',scenario.display.mode.includes('map')||scenario.display.mode==='2d'?'드래그 · 지도 이동 / + − · 확대와 축소':'드래그 · 회전 / + − · 확대와 축소');
   const selection=document.createElement('strong'),help=document.createElement('span');const sat=snapshot.satellites.find(s=>s.id===selected);
+  $('clear-satellite').disabled=!selected;
   selection.textContent=sat?`선택 · ${sat.id}`:'위성을 선택해 궤적을 살펴보세요';help.textContent=sat?`고도 ${format(Math.hypot(...sat.position)-6378.137,0)} km · 지상 궤적과 풋프린트를 확인하세요.`:'지구본의 위성 또는 선택 목록을 사용하세요.';$('scene-selection').replaceChildren(selection,help);
   for(const button of document.querySelectorAll('[data-scene-preset]')){const preset=button.dataset.scenePreset;const active=preset==='overview'?scenario.display.orbits&&!scenario.display.isl&&!scenario.display.heatmap:preset==='network'?scenario.display.isl&&!scenario.display.heatmap:scenario.display.heatmap&&!scenario.display.isl;button.setAttribute('aria-pressed',String(active));}
 }
@@ -229,6 +231,7 @@ $('add-observer').addEventListener('click',()=>{const id=globalThis.crypto?.rand
 $('example-tle').addEventListener('click',async()=>{try{$('tle-text').value=await fetch(new URL('./example.tle',import.meta.url)).then(r=>r.text());$('start-utc').value='';applyInputs();}catch(e){error(e.message);}});
 $('observer').addEventListener('change',()=>{scenario.active_observer=$('observer').value;refreshConfiguration();const o=activeObserver();viewer.center(o.lon,o.lat);});
 $('satellite').addEventListener('change',()=>{selected=$('satellite').value||null;draw();});
+$('clear-satellite').addEventListener('click',()=>{selected=null;$('satellite').value='';draw();});
 function pause(){clearInterval(playing);playing=null;text('play','재생');$('play').setAttribute('aria-pressed','false');}
 $('play').addEventListener('click',()=>{if(playing){pause();persistSession();return;}if(seconds>=scenario.analysis.duration_min*60)seconds=0;text('play','일시정지');$('play').setAttribute('aria-pressed','true');playing=setInterval(()=>{const end=scenario.analysis.duration_min*60;seconds=Math.min(end,seconds+Number($('play-speed').value)/2);draw();if(seconds>=end)pause();},500);});
 function stepTime(direction){pause();seconds=Math.max(0,Math.min(scenario.analysis.duration_min*60,seconds+direction*scenario.analysis.step_sec));draw();}
@@ -259,6 +262,7 @@ for(const k of ['orbits','isl','heatmap','footprint'])$('show-'+k).addEventListe
 $('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-shape').value;draw();});
 for(const [id,key]of [['sat-render','satRender'],['sat-model','satModel']])$(id).addEventListener('change',()=>{scenario.display[key]=$(id).value;draw();});
 $('highlight-visible').addEventListener('change',()=>{scenario.display.highlightVisible=$('highlight-visible').checked;draw();});
+$('show-satellite-labels').addEventListener('change',()=>{scenario.display.satelliteLabels=$('show-satellite-labels').checked;draw();});
 $('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');requestDraw();});
 $('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');requestDraw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});

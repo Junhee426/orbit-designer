@@ -75,6 +75,19 @@ test('visible outline preference defaults on for old scenarios and preserves an 
   delete s.display.highlightVisible;assert.equal(validateScenario(s,catalog).display.highlightVisible,true);
   for(const invalid of ['false',0,null])assert.throws(()=>validateScenario({...s,display:{...s.display,highlightVisible:invalid}},catalog));
 });
+test('satellite label visibility round-trips independently of selection and upgrades old settings',()=>{
+  const s=defaultScenario();assert.equal(s.display.satelliteLabels,true);
+  s.display.satelliteLabels=false;
+  for(const selected of [null,'L001']){
+    s.display.selected_satellite=selected;
+    const restored=importScenario(JSON.parse(JSON.stringify(s)),catalog);
+    assert.equal(restored.display.satelliteLabels,false);
+    assert.equal(restored.display.selected_satellite,selected);
+    assert.equal(analysisKey(restored),analysisKey(defaultScenario()));
+  }
+  delete s.display.satelliteLabels;assert.equal(validateScenario(s,catalog).display.satelliteLabels,true);
+  for(const invalid of ['false',0,null])assert.throws(()=>validateScenario({...s,display:{...s.display,satelliteLabels:invalid}},catalog));
+});
 test('3D model choices round-trip and old scenarios keep point markers',()=>{
   const s=defaultScenario();delete s.display.satRender;delete s.display.satModel;
   const legacy=validateScenario(s,catalog);assert.equal(legacy.display.satRender,'point');assert.equal(legacy.display.satModel,'default');
