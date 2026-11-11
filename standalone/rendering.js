@@ -17,6 +17,7 @@ export class Globe {
     this.lat = 25; this.lon = 120; this.full = false; this.mode = 'globe'; this.earthStyle = 'image'; this.worldLines = worldLines; this.cached = null;
     this.satShape = 'circle'; this.satSize = 1; this.orbitWidth = 1; this.zoomLevel = 1;
     this.highlightVisible = true;
+    this.showSatelliteLabels = true;
     this.mapCenter = {lat:0,lon:0};
     this.showOrbits = true; this.showIsl = false; this.showHeatmap = false; this.showFootprint = true; this.commElevation = 20;
     this.texture = null; this.snapshot = null; this.orbits = []; this.selectedId = null; this.edges = []; this.cells = [];
@@ -221,10 +222,9 @@ export class Globe {
     for (const sat of this.snapshot.satellites) {
       if (!this.full && sat.group !== 'LEO') continue;
       const q = project(sat.position); if (!unoccluded(q)) continue;
-      const chosen = sat.id === this.snapshot.best?.id;
       const fill = SATELLITE_FILL;
       paintSatellite(ctx, this.satShape, q.x, q.y, SATELLITE_DIAMETER / 2 * this.satSize, fill, this.highlightVisible && satelliteIsVisible(sat, this.full));
-      if (chosen || sat.id === this.selectedId) {
+      if (this.showSatelliteLabels && sat.id === this.selectedId) {
         ctx.globalAlpha = 1; ctx.font = '600 12px system-ui';ctx.fillStyle = sat.id===this.selectedId?SELECTED_ORBIT_LINE:'#ffe0ae';
         const labelX=Math.min(w-42,Math.max(5,q.x+10)),labelY=Math.max(16,q.y-8);
         ctx.strokeStyle='#060d18';ctx.lineWidth=3;ctx.strokeText(sat.id,labelX,labelY);ctx.fillText(sat.id,labelX,labelY);

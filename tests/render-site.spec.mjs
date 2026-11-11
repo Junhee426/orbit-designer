@@ -1,7 +1,8 @@
 import {test,expect} from '@playwright/test';
 import {fileURLToPath} from 'node:url';
 
-test('Docker frontend uses opaque uniform satellites and preserves the visible outline toggle',async({page})=>{
+test('Docker frontend preserves satellite styling, independent labels and empty selection',async({page})=>{
+  test.setTimeout(120000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   // Exercise the actual Docker frontend and API, using the locally built copy of its Cesium release.
   await page.route('https://cesium.com/downloads/cesiumjs/releases/1.144/Build/Cesium/**',async route=>{
@@ -54,10 +55,73 @@ test('Docker frontend uses opaque uniform satellites and preserves the visible o
     }
   }
   await page.locator('#sceneMode').selectOption('3d');
+  await expect(page.locator('#showSatelliteLabels')).toBeChecked();
+  await expect(page.locator('#clearSatelliteSelection')).toBeDisabled();
+  const geometry=page.waitForResponse(response=>response.url().endsWith('/api/orbital-geometry'));
+  await page.locator('#nextServiceSatellite').click();await geometry;
+  await expect(page.locator('#satDetails .sat-title')).toBeVisible();
+  await expect(page.locator('#clearSatelliteSelection')).toBeEnabled();
+  const selectedName=await page.locator('#satDetails .sat-title').textContent();
+  const visibleLabels=()=>page.evaluate(()=>window.satelliteEntities.filter(e=>e.label.show.getValue()).length);
+  await expect.poll(visibleLabels).toBe(1);
+  await page.locator('#showSatelliteLabels').uncheck();
+  for(const [sceneMode,render]of [['3d','point'],['3d','model'],['2d',null]]){
+    await page.locator('#sceneMode').selectOption(sceneMode);
+    if(render)await page.locator('#satRender').selectOption(render);
+    await expect.poll(visibleLabels).toBe(0);
+    await expect(page.locator('#satDetails .sat-title')).toHaveText(selectedName);
+  }
+  await page.evaluate(name=>{
+    window.satelliteLabelDraws=[];
+    const fillText=CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText=function(text,...args){
+      if(String(text).startsWith(name+' · '))window.satelliteLabelDraws.push(text);
+      return fillText.call(this,text,...args);
+    };
+  },selectedName);
+  for(const sceneMode of ['2d-map','2d-globe']){
+    await page.evaluate(()=>{window.satelliteLabelDraws=[];});
+    await page.locator('#sceneMode').selectOption(sceneMode);
+    expect(await page.evaluate(()=>window.satelliteLabelDraws)).toEqual([]);
+    await page.locator('#showSatelliteLabels').check();
+    await expect.poll(()=>page.evaluate(()=>window.satelliteLabelDraws.length)).toBeGreaterThan(0);
+    await page.evaluate(()=>{window.satelliteLabelDraws=[];});
+    await page.locator('#showSatelliteLabels').uncheck();
+    expect(await page.evaluate(()=>window.satelliteLabelDraws)).toEqual([]);
+  }
+  await page.locator('#sceneMode').selectOption('3d');
+  await page.locator('.satellite-selection-actions').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'outputs/legacy-satellite-selection-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('#settingsToggle').click();
+  await page.locator('.satellite-selection-actions').scrollIntoViewIfNeeded();
+  expect(await page.locator('.satellite-selection-actions').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:'outputs/legacy-satellite-selection-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
+  // An old geometry response must not restore overlays after clearing selection.
+  let releaseGeometry,geometryRequested;
+  const heldGeometry=new Promise(resolve=>{releaseGeometry=resolve;}),requestedGeometry=new Promise(resolve=>{geometryRequested=resolve;});
+  await page.route('**/api/orbital-geometry',async route=>{
+    const response=await route.fetch();geometryRequested();await heldGeometry;await route.fulfill({response});
+  });
+  await page.locator('#nextServiceSatellite').click();await requestedGeometry;
+  try{
+    await page.locator('#clearSatelliteSelection').click();
+    await expect(page.locator('#satDetails')).toHaveClass('empty-details');
+    await expect(page.locator('#clearSatelliteSelection')).toBeDisabled();
+    await expect(page.locator('#statTrack')).toHaveText('0');
+    await expect(page.locator('#statFootprint')).toHaveText('0 km');
+    await expect.poll(visibleLabels).toBe(0);
+  }finally{releaseGeometry();}
+  await expect.poll(()=>page.evaluate(()=>performance.getEntriesByType('resource').filter(r=>r.name.endsWith('/api/orbital-geometry')).length)).toBeGreaterThanOrEqual(2);
+  await expect(page.locator('#statTrack')).toHaveText('0');
+  await expect(page.locator('#statFootprint')).toHaveText('0 km');
   await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:'outputs/render-site-uniform-satellites.png',fullPage:true});
   await page.locator('#highlightVisible').uncheck();
   await page.reload();await expect(page.locator('#previewBtn')).toBeEnabled({timeout:45000});
   await expect(page.locator('#highlightVisible')).not.toBeChecked();
+  await expect(page.locator('#showSatelliteLabels')).not.toBeChecked();
   await expect(page.locator('#satModel')).toHaveValue('telescope');
   expect(errors).toEqual([]);
 });

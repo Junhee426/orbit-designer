@@ -64,8 +64,9 @@
     <div class="field"><label for="satModel">위성 3D 모양</label><select id="satModel" aria-describedby="satModelNote"><option value="default" data-description="중앙 본체와 양쪽 태양전지판">기본형</option><option value="compact" data-description="작은 본체와 짧은 패널">소형 버스</option><option value="broadband" data-description="넓은 패널과 통신 안테나">광대역 통신형</option><option value="flatpanel" data-description="납작한 본체와 평판 안테나">평판 통신형</option><option value="cubesat" data-description="세로형 소형 본체와 네 방향 패널">큐브샛</option><option value="radar" data-description="긴 레이더 안테나와 한쪽 태양전지판">레이더 관측형</option><option value="telescope" data-description="원통형 경통과 양쪽 패널">우주망원경형</option></select></div>
     <p class="note" id="satModelNote">중앙 본체와 양쪽 태양전지판</p>
     <label class="check"><input id="highlightVisible" type="checkbox" checked>가시 위성 테두리 강조</label>
+    <label class="check"><input id="showSatelliteLabels" type="checkbox" checked>위성 라벨 표시</label>
     <label class="check"><input id="serviceOnly" type="checkbox">서비스 가능 위성만 보기</label>
-    <button id="nextServiceSatellite" type="button" disabled>다음 서비스 위성 선택</button>
+    <div class="satellite-selection-actions" role="group" aria-label="위성 선택"><button id="nextServiceSatellite" type="button" disabled>다음 서비스 위성 선택</button><button id="clearSatelliteSelection" class="quiet" type="button" disabled>선택 해제</button></div>
     <p class="note">현재 최소 고도각을 충족하는 위성을 순서대로 선택하고 지도에서 찾아봅니다.</p>
     <label class="check"><input id="orbitOn" type="checkbox" checked>궤도선</label>
     <label class="check"><input id="groundTrackOn" type="checkbox" checked>선택 위성의 지상 궤적</label><label class="check"><input id="footprintOn" type="checkbox" checked>선택 위성의 풋프린트</label>

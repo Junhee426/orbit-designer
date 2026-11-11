@@ -747,7 +747,13 @@ function paintGlobeTexture(ctx,cx,cy,radius,dpr,latDeg,lonDeg){
   ctx.drawImage(globeCache.canvas,cx-radius,cy-radius,radius*2,radius*2);
 }
 
-function selectSatelliteId(id){state.selectedId=id;highlightSelection();renderSelected();fetchSelectedGeometry();renderFlat()}
+function selectSatelliteId(id,quiet=false){
+  state.selectedId=id||null;
+  highlightSelection();renderSelected();
+  const pending=fetchSelectedGeometry(quiet);
+  renderFlat();state.viewer?.scene.requestRender();
+  return pending;
+}
 function shellColorCss(id){if(!id)return '#eef3fb';const m=String(id).match(/(\d+)/),i=m?Math.max(0,(+m[1]-1)%SHELL_COLORS.length):0;return SHELL_COLORS[i]}
 function flatCanvasSize(canvas){if(typeof canvas.getBoundingClientRect!=='function'||typeof canvas.getContext!=='function')return{ctx:null,w:0,h:0,dpr:1};const r=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(r.width*dpr)||1;canvas.height=Math.round(r.height*dpr)||1;const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height,dpr}}
 const EARTH_R_KM=6378.137;
@@ -807,7 +813,7 @@ function renderFlat(){
     const selected=s.id===state.selectedId,r=4*satVisualSize(),outlined=$('highlightVisible').checked&&s.service_visible;
     ctx.save();ctx.globalAlpha=1;ctx.fillStyle=SATELLITE_FILL;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
     if(outlined||selected){ctx.clip();ctx.strokeStyle=selected?'#ffe26a':VISIBLE_OUTLINE;ctx.lineWidth=r*.75;ctx.stroke();}ctx.restore();
-    if(selected){ctx.fillStyle='#f7f2d8';ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(`${s.name} · ${num(s.altitude_km,0,' km')}`,Math.min(p.x+13,w-140),p.y-10);}
+    if(selected&&$('showSatelliteLabels').checked){ctx.fillStyle='#f7f2d8';ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(`${s.name} · ${num(s.altitude_km,0,' km')}`,Math.min(p.x+13,w-140),p.y-10);}
     state.flatHitPoints.push({x:p.x,y:p.y,id:s.id});
   }
   if($('accessOn').checked)for(const l of (viz.access_links||[])){
@@ -870,10 +876,7 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     h.setInputAction(m => {
       const p = v.scene.pick(m.position);
       if (Cesium.defined(p) && p.id && p.id._kleoSatelliteId) {
-        state.selectedId = p.id._kleoSatelliteId;
-        highlightSelection();
-        renderSelected();
-        fetchSelectedGeometry()
+        selectSatelliteId(p.id._kleoSatelliteId)
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     await applyEarthSource();
@@ -1000,10 +1003,10 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
         const occluded = !isMap2D() && +$('earthOpacity').value >= .999 &&
           e._kleoPosition && isEarthOccluded(camera, e._kleoPosition);
         e.point.show = !occluded;
-        e.label.show = !occluded && id === state.selectedId
+        e.label.show = $('showSatelliteLabels').checked && !occluded && id === state.selectedId
       } else {
         e.point.show = false;
-        e.label.show = id === state.selectedId
+        e.label.show = $('showSatelliteLabels').checked && id === state.selectedId
       }
     }
   }
@@ -1025,7 +1028,7 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
       e.model.uri = modelUri;
       e.point.disableDepthTestDistance = 0;
       e.label.disableDepthTestDistance = 0;
-      e.label.show = model && id === state.selectedId
+      e.label.show = $('showSatelliteLabels').checked && model && id === state.selectedId
     }
     highlightSelection()
   }
@@ -1278,6 +1281,8 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
 
   function renderSelected() {
     const s = state.snapshot?.satellites?.find(x => x.id === state.selectedId);
+    $('clearSatelliteSelection').disabled = !s;
+    $('selectedView').disabled = !s;
     if (!s) {
       $('satDetails').className = 'empty-details';
       $('satDetails').innerHTML = '<div class="empty-icon" aria-hidden="true">⌖</div>지도의 위성을 클릭하세요.<br>위치, 속도, 궤도 속성을 확인할 수 있습니다.';
@@ -1734,11 +1739,7 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     const candidates = (state.snapshot?.satellites || []).filter(s => s.service_visible && state.satEntities.has(s.id));
     if (!candidates.length) return;
     const index = candidates.findIndex(s => s.id === state.selectedId);
-    state.selectedId = candidates[(index + 1) % candidates.length].id;
-    highlightSelection();
-    renderSelected();
-    fetchSelectedGeometry(true);
-    renderFlat();
+    selectSatelliteId(candidates[(index + 1) % candidates.length].id,true);
     flySelected();
   }
 
@@ -1801,7 +1802,10 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     $('serviceOnly').addEventListener('change', updateSatelliteStyles);
     try{$('highlightVisible').checked=localStorage.getItem('kleo.visibleOutline')!=='false';}catch{}
     $('highlightVisible').addEventListener('change',()=>{try{localStorage.setItem('kleo.visibleOutline',String($('highlightVisible').checked));}catch{}updateSatelliteStyles();});
+    try{$('showSatelliteLabels').checked=localStorage.getItem('kleo.satelliteLabels')!=='false';}catch{}
+    $('showSatelliteLabels').addEventListener('change',()=>{try{localStorage.setItem('kleo.satelliteLabels',String($('showSatelliteLabels').checked));}catch{}updateSatelliteStyles();state.viewer?.scene.requestRender();});
     $('nextServiceSatellite').addEventListener('click', selectNextServiceSatellite);
+    $('clearSatelliteSelection').addEventListener('click', () => selectSatelliteId(null));
     for (const id of ['orbitOn', 'islOn', 'accessOn', 'coverageOn']) $(id).addEventListener('change', refetchLayers);
     for (const id of ['groundTrackOn', 'footprintOn']) $(id).addEventListener('change', () => fetchSelectedGeometry(true));
     $('trackSpan').addEventListener('input', () => {

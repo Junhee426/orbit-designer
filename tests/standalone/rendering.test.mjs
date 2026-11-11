@@ -112,6 +112,16 @@ test('front-facing orbit arcs render above the globe and selection respects orbi
   assert.ok(f.strokes.some(s=>s.color===SELECTED_ORBIT_LINE));
   assert.ok(f.operations.some(o=>o.type==='label'&&o.text===satellite.id&&o.color===SELECTED_ORBIT_LINE));
   assert.ok(f.paints.filter(p=>p.color===SATELLITE_FILL).every(p=>p.primitive.r===4&&p.alpha===1));
+  g.showSatelliteLabels=false;g.draw();
+  assert.ok(f.operations.every(o=>o.type!=='label'||o.text!==satellite.id));
+  assert.ok(f.strokes.some(s=>s.color===SELECTED_ORBIT_LINE),'hiding labels keeps the selected orbital path');
+  assert.ok(f.strokes.some(s=>s.color===GROUND_TRACK_LINE),'hiding labels keeps the selected ground track');
+  g.showSatelliteLabels=true;g.draw();
+  assert.ok(f.operations.some(o=>o.type==='label'&&o.text===satellite.id));
+  g.set({...f.snapshot,satellites:[satellite],best:satellite},[orbit],null);
+  assert.ok(f.operations.every(o=>o.type!=='label'||o.text!==satellite.id),'no selection must not label the best-link satellite automatically');
+  assert.ok(f.strokes.every(s=>s.color!==SELECTED_ORBIT_LINE&&s.color!==GROUND_TRACK_LINE));
+  g.set({...f.snapshot,satellites:[satellite]},[orbit],satellite.id);
   g.setLayers(false,false,false,false,20);g.draw();
   assert.ok(f.strokes.every(s=>s.color!==ORBIT_LINE&&s.color!==SELECTED_ORBIT_LINE),'orbit toggle hides both base and selected orbital paths');
   const hidden={...satellite,id:'G01',group:'GNSS'};

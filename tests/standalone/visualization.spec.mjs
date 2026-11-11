@@ -5,6 +5,48 @@ async function ready(page){
   await expect(page.locator('#status')).toContainText('준비 완료');
 }
 
+test('satellite selection and label visibility stay independent across views and reloads',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await ready(page);
+  await page.evaluate(async()=>{
+    const {OrbitViewer}=await import('./viewer.js'),update=OrbitViewer.prototype.update;
+    OrbitViewer.prototype.update=function(...args){window.selectionViewer=this;return update.apply(this,args);};
+  });
+  const select=page.locator('#satellite'),labels=page.locator('#show-satellite-labels'),clear=page.locator('#clear-satellite');
+  await expect(select).toHaveValue('');await expect(clear).toBeDisabled();
+  await select.selectOption({index:1});const selected=await select.inputValue();
+  const visibleLabels=()=>page.evaluate(()=>{
+    const entity=window.selectionViewer?.selectedLabel;
+    return entity?.show?[entity.label.text.getValue(Cesium.JulianDate.now())]:[];
+  });
+  await expect.poll(visibleLabels).toEqual([selected]);
+  await labels.uncheck();await expect.poll(visibleLabels).toEqual([]);
+  await expect(select).toHaveValue(selected);await expect(clear).toBeEnabled();
+  await page.locator('#time-forward').click();await expect.poll(visibleLabels).toEqual([]);
+  for(const mode of ['2d','2d-map','2d-globe','3d']){
+    await page.locator('#map-mode').selectOption(mode);
+    await expect(labels).not.toBeChecked();await expect(select).toHaveValue(selected);
+  }
+  await expect.poll(visibleLabels).toEqual([]);
+  await labels.check();await expect.poll(visibleLabels).toEqual([selected]);
+  await clear.click();await expect(select).toHaveValue('');await expect(clear).toBeDisabled();
+  await expect.poll(visibleLabels).toEqual([]);
+  await expect(page.locator('#scene-selection')).toContainText('위성을 선택해');
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  await page.reload();await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(select).toHaveValue('');await expect(clear).toBeDisabled();
+  await select.selectOption({index:1});await labels.uncheck();
+  await page.locator('.satellite-selection-controls').screenshot({path:'outputs/satellite-selection-desktop.png'});
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  await page.reload();await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(select).toHaveValue(selected);await expect(labels).not.toBeChecked();
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('.satellite-selection-controls').screenshot({path:'outputs/satellite-selection-mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2)).toBe(false);
+  await clear.click();await expect(select).toHaveValue('');
+  expect(errors).toEqual([]);
+});
+
 test('scene focus and visual presets preserve the selected time and synchronize layers',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await ready(page);

@@ -92,6 +92,7 @@ export class OrbitViewer {
     this.applyEarthStyle(scenario.display.earthStyle,false,false);
     this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth,false);
     this.fallback.highlightVisible=scenario.display.highlightVisible??true;
+    this.fallback.showSatelliteLabels=scenario.display.satelliteLabels??true;
     if(!this.usingCesium){
       this.fallback.setFull(showNavigation,false);
       this.fallback.setLayers(scenario.display.orbits,scenario.display.isl,scenario.display.heatmap,scenario.display.footprint,scenario.configuration.commElevation);
@@ -156,7 +157,7 @@ export class OrbitViewer {
     if(scenario.display.isl)for(const e of edges)line([byId.get(e.a).position,byId.get(e.b).position],ISL_LINE);
     if(scenario.display.heatmap)for(const cell of cells)add({rectangle:{coordinates:C.Rectangle.fromDegrees(cell.west,cell.south,cell.east,cell.north),height:1000,material:(cell.count?C.Color.fromHsl(HEATMAP_HUE/360,HEATMAP_SAT/100,heatmapLightness(cell.count)/100):C.Color.fromCssColorString(HEATMAP_EMPTY)).withAlpha(.55)}});
     const selected=keep.has(selectedId)?byId.get(selectedId):null,orbit=selected?orbits.find(o=>o.id===selectedId):null;
-    this.selectedLabel.show=!!selected;
+    this.selectedLabel.show=!!selected&&(scenario.display.satelliteLabels??true);
     if(selected){this.selectedLabel.position=xyz(selected.position);this.selectedLabel.label.text=selected.id;this.selectedLabel.satId=selected.id;}
     if(selected&&scenario.display.footprint){const coords=footprint(selected.position,scenario.configuration.commElevation).flat();if(coords.length)add({polyline:{positions:C.Cartesian3.fromDegreesArray(coords),width:2,material:C.Color.fromCssColorString(FOOTPRINT_LINE)}});}
     if(orbit&&selected){

@@ -16,7 +16,7 @@ const testExports = [
   'renderAccess', 'flyServiceArea', 'pointInGeometry', 'ensureBoundaryData',
   'loadServiceCatalog', 'fetchSelectedGeometry', 'runAnalysis', 'setModeUI',
   'initShells', 'addShell', 'shellPayloads', 'snapshotPayload', 'bind',
-  'selectNextServiceSatellite', 'sliderChanged',
+  'selectNextServiceSatellite', 'selectSatelliteId', 'sliderChanged',
   'applySceneMode', 'renderFlat',
 ].join(',');
 const code = source.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/, `window.testAPI={${testExports}};\n})();`);
@@ -26,16 +26,17 @@ function setup(controlOverrides = {}) {
   const elements = new Map();
   const cards = [];
   const requests = [];
+  const storage = new Map();
   let requestImpl = async () => { throw new Error('Unexpected fetch call'); };
   const controls = {
-    mode: 'walker', satRender: 'point', satSize: '1', satModel: 'default', highlightVisible: 'true',
+    mode: 'walker', satRender: 'point', satSize: '1', satModel: 'default', highlightVisible: 'true', showSatelliteLabels: 'true',
     earthOn: 'true', earthOpacity: '1', earthSource: 'offline',
     sceneMode: '3d', earthStyle: 'image',
     orbitOn: 'true', islOn: 'true', accessOn: 'true',
     groundTrackOn: 'false', footprintOn: 'false', trackSpan: '220',
     minEl: '20', timeSlider: '0', ...controlOverrides,
   };
-  const checked = new Set(['earthOn', 'orbitOn', 'islOn', 'accessOn', 'highlightVisible'].filter(k => controls[k] !== 'false'));
+  const checked = new Set(['earthOn', 'orbitOn', 'islOn', 'accessOn', 'highlightVisible', 'showSatelliteLabels', 'groundTrackOn', 'footprintOn'].filter(k => controls[k] !== 'false'));
   const element = id => {
     if (!elements.has(id)) {
       elements.set(id, {
@@ -145,6 +146,7 @@ function setup(controlOverrides = {}) {
   };
   const context = vm.createContext({
     window: {}, document, console, Cesium, AbortController, devicePixelRatio: 1, requestAnimationFrame() {},
+    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)) },
     fetch: (url, options) => { requests.push({ url, options }); return requestImpl(url, options); },
     setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id),
   });
@@ -152,7 +154,7 @@ function setup(controlOverrides = {}) {
   const api = context.window.testAPI;
   api.state.viewer = viewer;
   return {
-    api, element, viewer, requests, cesiumCalls, entitiesAdded, Cesium, cards,
+    api, element, viewer, requests, cesiumCalls, entitiesAdded, Cesium, cards, storage,
     setFetch(fn) { requestImpl = fn; },
   };
 }
@@ -297,6 +299,100 @@ async function run() {
     h.api.updateSatelliteStyles();
     assert.equal(h.api.state.satEntities.get('B').show, true);
     assert.equal(h.requests.length, 0);
+    checks++;
+  }
+
+  // Label visibility is independent of selection in point, model and 2D modes,
+  // and survives the per-frame occlusion update and restoring saved preferences.
+  {
+    const h = setup();
+    h.storage.set('kleo.satelliteLabels', 'false');
+    h.api.bind();
+    const satellites = [{ id: 'A', name: 'A', ecef_x_km: 7500, ecef_y_km: 0, ecef_z_km: 0 }];
+    h.api.state.snapshot = { satellites };
+    h.api.reconcileSatellites(satellites);
+    await h.api.selectSatelliteId('A');
+    const entity = h.api.state.satEntities.get('A');
+    for (const [sceneMode, satRender] of [['3d', 'point'], ['3d', 'model'], ['2d', 'model']]) {
+      h.element('sceneMode').value = sceneMode;
+      h.element('satRender').value = satRender;
+      h.api.updateSatelliteStyles();
+      h.api.updatePointOcclusion();
+      assert.equal(entity.label.show, false);
+      assert.equal(h.api.state.selectedId, 'A');
+      assert.equal(entity.point.outlineColor.tag, 'YELLOW');
+      h.element('showSatelliteLabels').checked = true;
+      h.element('showSatelliteLabels').listeners.change[0]();
+      assert.equal(entity.label.show, true);
+      assert.equal(h.storage.get('kleo.satelliteLabels'), 'true');
+      h.element('showSatelliteLabels').checked = false;
+      h.element('showSatelliteLabels').listeners.change[0]();
+      assert.equal(entity.label.show, false);
+      assert.equal(h.storage.get('kleo.satelliteLabels'), 'false');
+    }
+    assert.equal(h.requests.length, 0, 'display preferences must not fetch orbital geometry');
+    checks++;
+  }
+
+  // Lightweight views hide the selected name while retaining hit targets and
+  // observer labels; selection can still be cleared with labels hidden.
+  for (const mode of ['2d-globe', '2d-map']) {
+    const h = setup({ earthStyle: 'outline' }), labels = [];
+    const context = Object.fromEntries(['setTransform', 'clearRect', 'save', 'restore', 'beginPath', 'arc', 'fill', 'clip', 'stroke', 'setLineDash', 'moveTo', 'lineTo', 'closePath', 'strokeRect'].map(key => [key, () => {}]));
+    context.fillText = text => labels.push(text);
+    h.element('flatCanvas').getBoundingClientRect = () => ({ width: 800, height: 500 });
+    h.element('flatCanvas').getContext = () => context;
+    const satellites = [{ id: 'A', name: 'Selected A', lat_deg: 20, lon_deg: 120, altitude_km: 750, ecef_x_km: 7500, ecef_y_km: 0, ecef_z_km: 0 }];
+    h.api.state.snapshot = { satellites, time_sec: 0 };
+    h.api.state.viewMode = mode;
+    h.api.reconcileSatellites(satellites);
+    await h.api.selectSatelliteId('A');
+    assert.ok(labels.some(text => text.startsWith('Selected A')));
+    labels.length = 0;
+    h.element('showSatelliteLabels').checked = false;
+    h.api.renderFlat();
+    assert.ok(!labels.some(text => text.startsWith('Selected A')));
+    assert.ok(labels.includes('Seoul'));
+    assert.equal(h.api.state.flatHitPoints[0].id, 'A');
+    await h.api.selectSatelliteId(null);
+    assert.equal(h.api.state.selectedId, null);
+    assert.equal(h.api.state.flatHitPoints[0].id, 'A');
+    checks++;
+  }
+
+  // Clearing selection removes all selection overlays immediately and rejects
+  // geometry that finishes after the clear action.
+  {
+    const h = setup({ groundTrackOn: 'true' });
+    h.api.bind();
+    const satellites = [{ id: 'A', name: 'A', ecef_x_km: 7500, ecef_y_km: 0, ecef_z_km: 0 }];
+    h.api.state.snapshot = { satellites };
+    h.api.reconcileSatellites(satellites);
+    let finish;
+    h.setFetch(() => new Promise(resolve => { finish = () => resolve({ ok: true, json: async () => ({ ground_track: { segments_lon_lat_deg: [[[0, 0], [1, 1]]] } }) }); }));
+    const pending = h.api.selectSatelliteId('A');
+    const entity = h.api.state.satEntities.get('A');
+    assert.equal(entity.label.show, true);
+    assert.equal(h.element('clearSatelliteSelection').disabled, false);
+    h.api.state.selectedGeometry = { previous: true };
+    h.api.state.groundTrackCollection = { previous: true };
+    h.api.state.footprintEntity = { previous: true };
+    h.element('clearSatelliteSelection').click();
+    assert.equal(h.api.state.selectedId, null);
+    assert.equal(entity.label.show, false);
+    assert.equal(entity.point.outlineWidth, 0);
+    assert.equal(entity.model.silhouetteSize, 0);
+    assert.equal(h.api.state.selectedGeometry, null);
+    assert.equal(h.api.state.groundTrackCollection, null);
+    assert.equal(h.api.state.footprintEntity, null);
+    assert.equal(h.element('statTrack').textContent, '0');
+    assert.equal(h.element('statFootprint').textContent, '0 km');
+    assert.equal(h.element('satDetails').className, 'empty-details');
+    assert.equal(h.element('clearSatelliteSelection').disabled, true);
+    assert.equal(h.element('selectedView').disabled, true);
+    finish();await pending;
+    assert.equal(h.api.state.selectedGeometry, null, 'late geometry must not restore cleared overlays');
+    assert.equal(h.api.state.groundTrackCollection, null);
     checks++;
   }
 
