@@ -101,6 +101,28 @@ test('viewer reuses globe texture and draws once per update, including style cha
   assert.equal(f.textures,before+1,'changed globe scale needs a new texture resolution');
 });
 
+test('service target visibility hides canvas markers and names without changing satellites or links',t=>{
+  const f=fixture(t),g=f.globe,viewer=Object.create(OrbitViewer.prototype),s=defaultScenario();
+  Object.assign(viewer,{fallback:g,canvas:{},container:{dataset:{}},uiMode:'2d-globe',viewer:null});
+  g.center(37.5,179.9);
+  const sat={id:'LEO1',group:'LEO',position:f.snapshot.observer.map(v=>v*1.2)};
+  const snapshot={...f.snapshot,satellites:[sat],best:sat};
+  const labels=()=>f.operations.filter(o=>o.type==='label'&&o.text==='Site');
+  const markers=()=>f.paints.filter(p=>p.color==='#fff');
+  for(const mode of ['2d-map','2d-globe']){
+    s.display.mode=mode;s.display.serviceAreas=true;
+    viewer.update(snapshot,[],s,[],sat.id);
+    assert.equal(labels().length,1);assert.equal(markers().length,1);
+    const visibleLines=f.lines.length;
+    s.display.serviceAreas=false;viewer.update(snapshot,[],s,[],sat.id);
+    assert.equal(labels().length,0);assert.equal(markers().length,0);
+    assert.equal(f.paints.filter(p=>p.color===SATELLITE_FILL).length,1);
+    assert.equal(f.lines.length,visibleLines,'independent link and footprint overlays remain visible');
+    s.display.serviceAreas=true;viewer.update(snapshot,[],s,[],sat.id);
+    assert.equal(labels().length,1);assert.equal(markers().length,1);
+  }
+});
+
 test('front-facing orbit arcs render above the globe and selection respects orbit and domain visibility',t=>{
   const f=fixture(t),g=f.globe,orbit=buildConstellations(defaultScenario().configuration)[0];
   const satellite={...orbit,...orbitState(orbit,0)};

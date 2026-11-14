@@ -88,6 +88,15 @@ test('satellite label visibility round-trips independently of selection and upgr
   delete s.display.satelliteLabels;assert.equal(validateScenario(s,catalog).display.satelliteLabels,true);
   for(const invalid of ['false',0,null])assert.throws(()=>validateScenario({...s,display:{...s.display,satelliteLabels:invalid}},catalog));
 });
+test('service target visibility preserves analysis settings and upgrades older scenarios',()=>{
+  const s=defaultScenario(),key=analysisKey(s);assert.equal(s.display.serviceAreas,true);
+  s.display.serviceAreas=false;
+  const restored=importScenario(JSON.parse(JSON.stringify(s)),catalog);
+  assert.equal(restored.display.serviceAreas,false);assert.equal(analysisKey(restored),key);
+  assert.deepEqual(restored.selection,s.selection);assert.equal(restored.active_observer,s.active_observer);
+  delete s.display.serviceAreas;assert.equal(validateScenario(s,catalog).display.serviceAreas,true);
+  for(const invalid of ['false',0,null])assert.throws(()=>validateScenario({...s,display:{...s.display,serviceAreas:invalid}},catalog));
+});
 test('3D model choices round-trip and old scenarios keep point markers',()=>{
   const s=defaultScenario();delete s.display.satRender;delete s.display.satModel;
   const legacy=validateScenario(s,catalog);assert.equal(legacy.display.satRender,'point');assert.equal(legacy.display.satModel,'default');

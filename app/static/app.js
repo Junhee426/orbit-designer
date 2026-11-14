@@ -152,6 +152,7 @@
     baseLayer: null,
     earthSourceSeq: 0,
     boundaryDataSource: null,
+    boundarySeq: 0,
     boundaryData: null,
     boundaryFallback: null,
     boundaryFeatureMap: new Map(),
@@ -513,13 +514,17 @@
     return data
   }
   async function renderServiceBoundaries() {
+    const seq = ++state.boundarySeq;
     if (!state.viewer) return;
     if (state.boundaryDataSource) {
       state.viewer.dataSources.remove(state.boundaryDataSource, true);
       state.boundaryDataSource = null
     }
-    if ($('boundaryMode').value === 'off' || !state.serviceSelection) return;
+    state.viewer.scene.requestRender();
+    const current = () => seq === state.boundarySeq && $('showServiceAreas').checked && $('boundaryMode').value !== 'off' && state.serviceSelection;
+    if (!current()) return;
     await ensureBoundaryData();
+    if (!current()) return;
     const codes = state.serviceSelection.country_codes || [];
     const features = codes.map(c => state.boundaryFeatureMap.get(c)).filter(Boolean);
     if (!features.length) return;
@@ -533,8 +538,26 @@
       strokeWidth: 2,
       clampToGround: true
     });
-    state.boundaryDataSource = await state.viewer.dataSources.add(ds);
+    if (!current()) return;
+    ds.show = false;
+    const added = await state.viewer.dataSources.add(ds);
+    if (!current()) {
+      state.viewer.dataSources.remove(added, true);
+      return;
+    }
+    state.boundaryDataSource = added;
+    added.show = true;
+    state.viewer.scene.requestRender();
     $('boundarySourceNote').innerHTML = `Boundary: <b>${esc(state.boundarySource)}</b> · ${features.length}/${codes.length} loaded`
+  }
+
+  function updateServiceAreaVisibility() {
+    const show = $('showServiceAreas').checked;
+    $('boundaryMode').disabled = !show;
+    for (const entity of state.groundEntities.values()) entity.show = show;
+    renderFlat();
+    state.viewer?.scene.requestRender();
+    return renderServiceBoundaries();
   }
 
   function pointInRing(lon, lat, ring) {
@@ -821,7 +844,7 @@ function renderFlat(){
     const sat=ecefToLLA(l.satellite_ecef_km);if(!sat)continue;
     line([[l.station_lat_deg,l.station_lon_deg,0],[sat.lat,sat.lon,sat.alt]],'#60e8a3e6',2);
   }
-  for(const st of stations()){const p=project(st.lat_deg,st.lon_deg);if(!p.front)continue;ctx.strokeStyle='#d3dbe9';ctx.fillStyle='#e8f4ff';ctx.lineWidth=1.5;ctx.strokeRect(p.x-4,p.y-4,8,8);ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(st.name,Math.min(p.x+10,w-65),p.y+14);}
+  if($('showServiceAreas').checked)for(const st of stations()){const p=project(st.lat_deg,st.lon_deg);if(!p.front)continue;ctx.strokeStyle='#d3dbe9';ctx.fillStyle='#e8f4ff';ctx.lineWidth=1.5;ctx.strokeRect(p.x-4,p.y-4,8,8);ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillText(st.name,Math.min(p.x+10,w-65),p.y+14);}
   ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillStyle='#829bb5';ctx.fillText(state.snapshot?fmtTime(state.snapshot.time_sec):'',8,16);
   if(!map){ctx.textAlign='right';ctx.fillText(`중심 ${state.flatCamera.lat.toFixed(0)}°, ${state.flatCamera.lon.toFixed(0)}°`,w-8,16);}
 
@@ -1167,9 +1190,13 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
       seen = new Set();
     for (const l of links) {
       seen.add(l.station);
-      if (state.groundEntities.has(l.station)) continue;
+      if (state.groundEntities.has(l.station)) {
+        state.groundEntities.get(l.station).show = $('showServiceAreas').checked;
+        continue;
+      }
       const p = Cesium.Cartesian3.fromDegrees(l.station_lon_deg, l.station_lat_deg, 0);
       const e = state.viewer.entities.add({
+        show: $('showServiceAreas').checked,
         position: p,
         point: {
           pixelSize: 8,
@@ -1776,6 +1803,12 @@ async function loadWorldOutlines(){try{const r=await fetch('/static/world.json')
     });
     $('citiesPerCountry').addEventListener('change', () => applyServiceSelection(false));
     $('boundaryMode').addEventListener('change', renderServiceBoundaries);
+    try{$('showServiceAreas').checked=localStorage.getItem('kleo.serviceAreas')!=='false';}catch{}
+    $('boundaryMode').disabled=!$('showServiceAreas').checked;
+    $('showServiceAreas').addEventListener('change',()=>{
+      try{localStorage.setItem('kleo.serviceAreas',String($('showServiceAreas').checked));}catch{}
+      updateServiceAreaVisibility().catch(e=>setStatus('서비스 지역 표시: '+e.message,'warn'));
+    });
     $('playBtn').addEventListener('click', startPlayback);
     $('resetTimeBtn').addEventListener('click', () => {
       stopPlayback();

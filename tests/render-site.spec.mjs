@@ -1,6 +1,72 @@
 import {test,expect} from '@playwright/test';
 import {fileURLToPath} from 'node:url';
 
+test('service region visibility hides map overlays without changing analysis targets',async({page})=>{
+  const errors=[],snapshots=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('https://cesium.com/downloads/cesiumjs/releases/1.144/Build/Cesium/**',async route=>{
+    const relative=route.request().url().split('/Build/Cesium/')[1].split('?')[0];
+    await route.fulfill({path:fileURLToPath(new URL('../standalone/vendor/cesium/'+relative,import.meta.url))});
+  });
+  await page.route('**/ne_50m_admin_0_countries.geojson',route=>route.fulfill({path:fileURLToPath(new URL('../app/static/service_boundaries_fallback.geojson',import.meta.url))}));
+  await page.route('**/api/snapshot',async route=>{
+    snapshots.push(route.request().postDataJSON());
+    await page.evaluate(()=>{
+      if(window.serviceMarkers)return;
+      window.serviceMarkers=[];
+      const add=Cesium.EntityCollection.prototype.add;
+      Cesium.EntityCollection.prototype.add=function(options){const entity=add.call(this,options);if(options.point&&options.label&&!options.model)window.serviceMarkers.push(entity);return entity;};
+      const addData=Cesium.DataSourceCollection.prototype.add;
+      Cesium.DataSourceCollection.prototype.add=function(ds){window.serviceDataSources=this;return addData.call(this,ds);};
+    });
+    await route.continue();
+  });
+  await page.goto('/');await expect(page.locator('#previewBtn')).toBeEnabled({timeout:45000});
+  const controls=page.locator('details').filter({has:page.locator('#showServiceAreas')});
+  await controls.locator('summary').click();
+  await page.locator('#accessOn').check();
+  await expect.poll(()=>page.evaluate(()=>window.serviceMarkers.length)).toBeGreaterThan(0);
+  await page.locator('#boundaryMode').selectOption('auto');
+  await expect.poll(()=>page.evaluate(()=>window.serviceDataSources?.length)).toBe(1);
+  const targetInputs=JSON.stringify(snapshots.at(-1).stations),requestCount=snapshots.length;
+  const countries=await page.locator('.service-country:checked').evaluateAll(nodes=>nodes.map(n=>n.value));
+  await page.locator('#showServiceAreas').uncheck();
+  await expect(page.locator('#boundaryMode')).toBeDisabled();
+  await expect(page.locator('#boundaryMode')).toHaveValue('auto');
+  await expect(page.locator('#accessOn')).toBeChecked();
+  await expect.poll(()=>page.evaluate(()=>window.serviceMarkers.every(e=>!e.show))).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>window.serviceDataSources.length)).toBe(0);
+  expect(snapshots.length).toBe(requestCount);
+  for(const mode of ['2d','3d']){
+    await page.locator('#sceneMode').selectOption(mode);
+    await expect.poll(()=>page.evaluate(()=>window.serviceMarkers.every(e=>!e.show))).toBe(true);
+  }
+  await page.evaluate(()=>{
+    window.cityLabels=[];const fillText=CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText=function(text,...args){if(text==='Seoul')window.cityLabels.push(text);return fillText.call(this,text,...args);};
+  });
+  for(const mode of ['2d-map','2d-globe']){
+    await page.evaluate(()=>{window.cityLabels=[];});await page.locator('#sceneMode').selectOption(mode);
+    expect(await page.evaluate(()=>window.cityLabels)).toEqual([]);
+    await page.locator('#showServiceAreas').check();
+    await expect.poll(()=>page.evaluate(()=>window.cityLabels.length)).toBeGreaterThan(0);
+    await page.evaluate(()=>{window.cityLabels=[];});await page.locator('#showServiceAreas').uncheck();
+    expect(await page.evaluate(()=>window.cityLabels)).toEqual([]);
+  }
+  expect(await page.locator('.service-country:checked').evaluateAll(nodes=>nodes.map(n=>n.value))).toEqual(countries);
+  await page.locator('#previewBtn').click();
+  await expect.poll(()=>snapshots.length).toBeGreaterThan(requestCount);
+  expect(JSON.stringify(snapshots.at(-1).stations)).toBe(targetInputs);
+  await page.locator('#sceneMode').selectOption('3d');
+  await controls.screenshot({path:'outputs/legacy-service-regions-desktop.png'});
+  await page.setViewportSize({width:390,height:844});
+  if(await page.locator('#settingsToggle').getAttribute('aria-expanded')==='false')await page.locator('#settingsToggle').click();
+  await controls.screenshot({path:'outputs/legacy-service-regions-mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.reload();await expect(page.locator('#previewBtn')).toBeEnabled({timeout:45000});
+  await expect(page.locator('#showServiceAreas')).not.toBeChecked();
+  expect(errors).toEqual([]);
+});
+
 test('Docker frontend preserves satellite styling, independent labels and empty selection',async({page})=>{
   test.setTimeout(120000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));

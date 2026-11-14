@@ -17,7 +17,7 @@ const testExports = [
   'loadServiceCatalog', 'fetchSelectedGeometry', 'runAnalysis', 'setModeUI',
   'initShells', 'addShell', 'shellPayloads', 'snapshotPayload', 'bind',
   'selectNextServiceSatellite', 'selectSatelliteId', 'sliderChanged',
-  'applySceneMode', 'renderFlat',
+  'applySceneMode', 'renderFlat', 'renderServiceBoundaries', 'updateServiceAreaVisibility',
 ].join(',');
 const code = source.replace(/bootstrap\(\);\s*\}\)\(\);\s*$/, `window.testAPI={${testExports}};\n})();`);
 assert.notEqual(code, source, 'The harness must suppress the real startup call.');
@@ -32,11 +32,11 @@ function setup(controlOverrides = {}) {
     mode: 'walker', satRender: 'point', satSize: '1', satModel: 'default', highlightVisible: 'true', showSatelliteLabels: 'true',
     earthOn: 'true', earthOpacity: '1', earthSource: 'offline',
     sceneMode: '3d', earthStyle: 'image',
-    orbitOn: 'true', islOn: 'true', accessOn: 'true',
+    orbitOn: 'true', islOn: 'true', accessOn: 'true', showServiceAreas: 'true', boundaryMode: 'off',
     groundTrackOn: 'false', footprintOn: 'false', trackSpan: '220',
     minEl: '20', timeSlider: '0', ...controlOverrides,
   };
-  const checked = new Set(['earthOn', 'orbitOn', 'islOn', 'accessOn', 'highlightVisible', 'showSatelliteLabels', 'groundTrackOn', 'footprintOn'].filter(k => controls[k] !== 'false'));
+  const checked = new Set(['earthOn', 'orbitOn', 'islOn', 'accessOn', 'highlightVisible', 'showSatelliteLabels', 'showServiceAreas', 'groundTrackOn', 'footprintOn'].filter(k => controls[k] !== 'false'));
   const element = id => {
     if (!elements.has(id)) {
       elements.set(id, {
@@ -354,6 +354,14 @@ async function run() {
     assert.ok(!labels.some(text => text.startsWith('Selected A')));
     assert.ok(labels.includes('Seoul'));
     assert.equal(h.api.state.flatHitPoints[0].id, 'A');
+    labels.length = 0;
+    h.element('showServiceAreas').checked = false;
+    await h.api.updateServiceAreaVisibility();
+    assert.ok(!labels.includes('Seoul'), 'service visibility hides city names in both lightweight views');
+    assert.equal(h.api.state.flatHitPoints[0].id, 'A');
+    h.element('showServiceAreas').checked = true;
+    await h.api.updateServiceAreaVisibility();
+    assert.ok(labels.includes('Seoul'));
     await h.api.selectSatelliteId(null);
     assert.equal(h.api.state.selectedId, null);
     assert.equal(h.api.state.flatHitPoints[0].id, 'A');
@@ -594,6 +602,62 @@ async function run() {
     h.api.renderAccess(viz);
     assert.equal(h.api.state.accessCollection.items.length, 1);
     assert.equal(h.entitiesAdded.length, 1, 'a visible access link must create the ground station marker');
+    const marker = h.api.state.groundEntities.get('Seoul');
+    assert.equal(marker.show, true);
+    const selection = { country_codes: ['KOR'], stations: [{ name: 'Seoul', lat_deg: 37, lon_deg: 127 }], coverage_areas: [{ code: 'KOR', lon_min: 125, lon_max: 130, lat_min: 33, lat_max: 39 }] };
+    h.api.state.serviceSelection = selection;
+    const payload = JSON.stringify(h.api.snapshotPayload(0));
+    h.storage.set('kleo.serviceAreas', 'false');h.api.bind();
+    assert.equal(h.element('showServiceAreas').checked, false);
+    await h.api.updateServiceAreaVisibility();
+    assert.equal(marker.show, false);
+    assert.equal(h.element('boundaryMode').disabled, true);
+    h.api.renderAccess(viz);
+    assert.equal(marker.show, false, 'a new snapshot must retain hidden markers');
+    assert.equal(h.api.state.accessCollection.items.length, 1, 'independent access links remain visible');
+    assert.equal(h.api.state.serviceSelection, selection);
+    assert.equal(JSON.stringify(h.api.snapshotPayload(0)), payload, 'display changes leave analysis inputs unchanged');
+    assert.equal(h.requests.length, 0, 'display changes do not refetch the snapshot');
+    h.element('showServiceAreas').checked = true;
+    h.element('showServiceAreas').listeners.change[0]();
+    assert.equal(marker.show, true);
+    assert.equal(h.storage.get('kleo.serviceAreas'), 'true');
+    h.element('showServiceAreas').checked = false;
+    h.element('showServiceAreas').listeners.change[0]();
+    assert.equal(h.storage.get('kleo.serviceAreas'), 'false');
+    checks++;
+  }
+
+  // Hidden service regions reject pending GeoJSON loads/additions, retain the
+  // boundary preference, and can be restored without changing region selection.
+  for (const stage of ['load', 'add']) {
+    const h = setup({ boundaryMode: 'auto' }), removed = [], added = [];
+    h.api.state.serviceSelection = { country_codes: ['KOR'] };
+    h.api.state.boundaryData = { features: [] };
+    h.api.state.boundaryFeatureMap.set('KOR', { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [] } });
+    let finish,started;
+    const waiting = new Promise(resolve => { started = resolve; });
+    const pendingStage = ds => new Promise(resolve => { finish = () => resolve(ds);started(); });
+    h.Cesium.GeoJsonDataSource.load = async () => stage === 'load' ? pendingStage({}) : {};
+    h.viewer.dataSources.add = async ds => { added.push(ds);return stage === 'add' ? pendingStage(ds) : ds; };
+    h.viewer.dataSources.remove = ds => removed.push(ds);
+    const pending = h.api.renderServiceBoundaries();await waiting;
+    h.element('showServiceAreas').checked = false;
+    await h.api.updateServiceAreaVisibility();finish();await pending;
+    assert.equal(h.api.state.boundaryDataSource, null);
+    assert.equal(h.element('boundaryMode').value, 'auto');
+    if(stage === 'load')assert.equal(added.length, 0);
+    else { assert.equal(added[0].show, false);assert.equal(removed[0], added[0]); }
+    h.Cesium.GeoJsonDataSource.load = async () => ({});
+    h.viewer.dataSources.add = async ds => ds;
+    h.element('showServiceAreas').checked = true;
+    await h.api.updateServiceAreaVisibility();
+    assert.equal(h.api.state.boundaryDataSource.show, true);
+    assert.equal(h.element('boundaryMode').disabled, false);
+    h.element('showServiceAreas').checked = false;
+    const displayed = h.api.state.boundaryDataSource;
+    await h.api.updateServiceAreaVisibility();
+    assert.equal(removed.at(-1), displayed);
     checks++;
   }
 

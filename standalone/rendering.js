@@ -18,6 +18,7 @@ export class Globe {
     this.satShape = 'circle'; this.satSize = 1; this.orbitWidth = 1; this.zoomLevel = 1;
     this.highlightVisible = true;
     this.showSatelliteLabels = true;
+    this.showServiceAreas = true;
     this.mapCenter = {lat:0,lon:0};
     this.showOrbits = true; this.showIsl = false; this.showHeatmap = false; this.showFootprint = true; this.commElevation = 20;
     this.texture = null; this.snapshot = null; this.orbits = []; this.selectedId = null; this.edges = []; this.cells = [];
@@ -245,7 +246,7 @@ export class Globe {
         stroke(groundTrackSurface(selOrbit, this.snapshot.minutes), GROUND_TRACK_LINE, 2);
       }
     }
-    if (map || obs.z >= 0) {
+    if (this.showServiceAreas && (map || obs.z >= 0)) {
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#48d4f0'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(obs.x, obs.y, 4, 0, TWO_PI); ctx.fill(); ctx.stroke();
       ctx.font = '14px system-ui'; ctx.fillText(this.snapshot.location.name, Math.min(w - 80, obs.x + 10), Math.max(20, obs.y + 17));

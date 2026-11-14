@@ -5,6 +5,43 @@ async function ready(page){
   await expect(page.locator('#status')).toContainText('준비 완료');
 }
 
+test('service target visibility persists across map modes without changing analysis or selection',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await ready(page);
+  await page.evaluate(async()=>{
+    const {OrbitViewer}=await import('./viewer.js'),update=OrbitViewer.prototype.update;
+    OrbitViewer.prototype.update=function(...args){window.serviceViewer=this;return update.apply(this,args);};
+  });
+  const toggle=page.locator('#show-service-areas');await expect(toggle).toBeChecked();
+  const metrics=await page.locator('#snapshot-metrics').innerText(),observer=await page.locator('#observer').inputValue();
+  const countries=await page.locator('[data-country]:checked').evaluateAll(nodes=>nodes.map(n=>n.value));
+  await page.locator('#satellite').selectOption({index:1});const selected=await page.locator('#satellite').inputValue();
+  const observerVisibility=()=>page.evaluate(()=>window.serviceViewer.observerEntities.map(entity=>entity.show));
+  await expect.poll(observerVisibility).toEqual([true,true,true]);
+  await toggle.uncheck();await expect.poll(observerVisibility).toEqual([false,false,false]);
+  for(const mode of ['2d','2d-map','2d-globe','3d']){
+    await page.locator('#map-mode').selectOption(mode);
+    await expect(toggle).not.toBeChecked();await expect(page.locator('#satellite')).toHaveValue(selected);
+    expect(await page.evaluate(()=>window.serviceViewer.fallback.showServiceAreas)).toBe(false);
+  }
+  expect(await page.locator('#snapshot-metrics').innerText()).toBe(metrics);
+  await expect(page.locator('#observer')).toHaveValue(observer);
+  expect(await page.locator('[data-country]:checked').evaluateAll(nodes=>nodes.map(n=>n.value))).toEqual(countries);
+  await page.locator('[data-scene-preset="coverage"]').click();await expect(toggle).not.toBeChecked();
+  await expect(page.locator('#show-heatmap')).toBeChecked();
+  await toggle.check();await expect.poll(observerVisibility).toEqual([true,true,true]);
+  await toggle.uncheck();await page.locator('#time-forward').click();
+  await expect.poll(observerVisibility).toEqual([false,false,false]);
+  await page.locator('.globe-panel>.layer-controls').screenshot({path:'outputs/service-target-controls-desktop.png'});
+  await expect(page.locator('#save-status')).toHaveText('이 기기에 자동 저장됨');
+  await page.reload();await expect(page.locator('#status')).toContainText('준비 완료');
+  await expect(toggle).not.toBeChecked();await expect(page.locator('#observer')).toHaveValue(observer);
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('.globe-panel>.layer-controls').screenshot({path:'outputs/service-target-controls-mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2)).toBe(false);
+  await toggle.check();await expect(toggle).toBeChecked();expect(errors).toEqual([]);
+});
+
 test('satellite selection and label visibility stay independent across views and reloads',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await ready(page);

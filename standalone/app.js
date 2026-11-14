@@ -74,6 +74,7 @@ function syncForm(){
   $('sat-shape').value=scenario.display.satShape;$('sat-size').value=scenario.display.satSize;text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');
   $('highlight-visible').checked=scenario.display.highlightVisible;
   $('show-satellite-labels').checked=scenario.display.satelliteLabels;
+  $('show-service-areas').checked=scenario.display.serviceAreas;
   $('sat-render').value=scenario.display.satRender;$('sat-model').value=scenario.display.satModel;
   $('orbit-width').value=scenario.display.orbitWidth;text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');
   modeFields();
@@ -263,6 +264,7 @@ $('sat-shape').addEventListener('change',()=>{scenario.display.satShape=$('sat-s
 for(const [id,key]of [['sat-render','satRender'],['sat-model','satModel']])$(id).addEventListener('change',()=>{scenario.display[key]=$(id).value;draw();});
 $('highlight-visible').addEventListener('change',()=>{scenario.display.highlightVisible=$('highlight-visible').checked;draw();});
 $('show-satellite-labels').addEventListener('change',()=>{scenario.display.satelliteLabels=$('show-satellite-labels').checked;draw();});
+$('show-service-areas').addEventListener('change',()=>{scenario.display.serviceAreas=$('show-service-areas').checked;draw();});
 $('sat-size').addEventListener('input',()=>{scenario.display.satSize=Number($('sat-size').value);text('sat-size-value',scenario.display.satSize.toFixed(2)+'×');requestDraw();});
 $('orbit-width').addEventListener('input',()=>{scenario.display.orbitWidth=Number($('orbit-width').value);text('orbit-width-value',scenario.display.orbitWidth.toFixed(1)+'×');requestDraw();});
 $('route').addEventListener('click',()=>{try{const to=observers.find(o=>o.id===$('route-target').value);if(!to)return;const route=routeBetween(current.satellites,islEdges(current.satellites),activeObserver(),to,scenario.configuration.commElevation);text('route-result',route?`${route.from} → ${route.to} · ${format(route.delayMs)} ms · ISL ${route.hops}홉 · ${route.path.join(' → ')}`:'현재 조건에서 연결 가능한 경로가 없습니다.');}catch(e){error(e.message);}});

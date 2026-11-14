@@ -93,6 +93,7 @@ export class OrbitViewer {
     this.fallback.setStyle(scenario.display.satShape,scenario.display.satSize,scenario.display.orbitWidth,false);
     this.fallback.highlightVisible=scenario.display.highlightVisible??true;
     this.fallback.showSatelliteLabels=scenario.display.satelliteLabels??true;
+    this.fallback.showServiceAreas=scenario.display.serviceAreas??true;
     if(!this.usingCesium){
       this.fallback.setFull(showNavigation,false);
       this.fallback.setLayers(scenario.display.orbits,scenario.display.isl,scenario.display.heatmap,scenario.display.footprint,scenario.configuration.commElevation);
@@ -148,6 +149,7 @@ export class OrbitViewer {
       for(const e of this.observerEntities)v.entities.remove(e);this.observerKey=observerKey;
       this.observerEntities=observers.map(o=>v.entities.add({position:C.Cartesian3.fromDegrees(o.lon,o.lat),point:{pixelSize:6,color:C.Color.fromCssColorString('#e8f2fc')},label:{text:o.name,font:'12px sans-serif',fillColor:C.Color.WHITE,pixelOffset:new C.Cartesian2(0,-14),distanceDisplayCondition:new C.DistanceDisplayCondition(0,40000000)}}));
     }
+    for(const entity of this.observerEntities)entity.show=scenario.display.serviceAreas??true;
     if(snapshot.best)line([snapshot.observer,snapshot.best.position],SAT_COLORS.best,2);
     if(scenario.display.orbits){const seen=new Set();for(const o of orbits){if(!showNavigation&&o.group!=='LEO')continue;const key=o.satrec?o.id:o.group==='LEO'?`${o.shell}:${o.plane}`:`${o.group}:${o.raan}:${o.inclination}`;if(seen.has(key))continue;seen.add(key);
       if(o.satrec){line(groundTrack(o,snapshot.minutes),ORBIT_LINE,1.15*orbitWidth);continue;}

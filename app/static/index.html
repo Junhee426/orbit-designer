@@ -73,6 +73,7 @@
     <div class="field"><label for="trackSpan">지상 궤적 시간 범위</label><div class="range-line"><input id="trackSpan" type="range" min="30" max="720" step="10" value="220"><span id="trackSpanValue" class="range-value">220 min</span></div></div><p class="note">지상 궤적과 풋프린트는 Walker / Multi-shell의 선택 위성에 표시됩니다.</p>
   </details>
   <details class="section" data-view="orbit"><summary>통신 및 커버리지 레이어</summary><p class="note">필요한 레이어를 켜서 현재 시각의 연결과 가시 범위를 확인하세요.</p>
+    <label class="check" title="관측 도시의 위치·이름과 선택 국가의 경계를 표시합니다. 분석 대상 지역은 유지됩니다."><input id="showServiceAreas" type="checkbox" checked>서비스 대상 지역 표시</label>
     <label class="check"><input id="islOn" type="checkbox">위성 간 연결 · ISL</label><label class="check"><input id="accessOn" type="checkbox">지상국 연결</label><label class="check"><input id="coverageOn" type="checkbox">가시 위성 수 · 히트맵</label>
     <div class="field"><label for="heatRes">히트맵 격자</label><input id="heatRes" type="range" min="12" max="60" value="28"><div id="heatResValue" class="note">28×28</div></div>
     <div class="field"><label for="coverageOpacity">히트맵 불투명도</label><div class="range-line"><input id="coverageOpacity" type="range" min="0.05" max="0.9" step="0.05" value="0.55"><span id="coverageOpacityValue" class="range-value">0.55</span></div></div>
